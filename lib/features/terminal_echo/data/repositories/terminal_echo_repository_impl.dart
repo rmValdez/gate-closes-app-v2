@@ -1,12 +1,13 @@
+import 'package:fpdart/fpdart.dart';
 import 'package:gate_closes/core/constants/api_endpoints.dart';
 import 'package:gate_closes/core/errors/exceptions.dart';
 import 'package:gate_closes/core/errors/failure.dart';
+import 'package:gate_closes/core/location/location_coordinates.dart';
 import 'package:gate_closes/core/services/api_service.dart';
-import 'package:gate_closes/features/location/domain/entities/location_coordinates.dart';
 import 'package:gate_closes/features/terminal_echo/data/models/terminal_echo_model.dart';
 import 'package:gate_closes/features/terminal_echo/domain/entities/terminal_echo_entity.dart';
 import 'package:gate_closes/features/terminal_echo/domain/repositories/terminal_echo_repository.dart';
-import 'package:fpdart/fpdart.dart';
+import 'package:uuid/uuid.dart';
 
 class TerminalEchoRepositoryImpl implements TerminalEchoRepository {
   const TerminalEchoRepositoryImpl(this._api);
@@ -70,7 +71,13 @@ class TerminalEchoRepositoryImpl implements TerminalEchoRepository {
         'waveformData': waveformData,
       };
 
-      final response = await _api.post(ApiEndpoints.terminalEcho, payload);
+      // Fresh key per post: lets the transport retry safely without the
+      // server creating the same echo twice.
+      final response = await _api.postWith(
+        ApiEndpoints.terminalEcho,
+        body: payload,
+        idempotencyKey: const Uuid().v4(),
+      );
       final rawData = (response as Map)['data'];
       final model =
           TerminalEchoModel.fromJson((rawData as Map).cast<String, dynamic>());
@@ -105,44 +112,6 @@ class TerminalEchoRepositoryImpl implements TerminalEchoRepository {
     try {
       await _api.patch(ApiEndpoints.terminalEchoListen(echoId));
       return const Right(null);
-    } on AppException catch (e) {
-      return Left(ServerFailure(e.message));
-    } on Object catch (e) {
-      return Left(ServerFailure(e.toString()));
-    }
-  }
-
-  @override
-  Future<Either<Failure, Map<String, dynamic>>> getMapGeoJson({
-    double? west,
-    double? south,
-    double? east,
-    double? north,
-  }) async {
-    try {
-      final query = <String, dynamic>{};
-      if (west != null && south != null && east != null && north != null) {
-        query['west'] = west;
-        query['south'] = south;
-        query['east'] = east;
-        query['north'] = north;
-      }
-
-      final response = await _api.get(
-        ApiEndpoints.terminalEchoMap,
-        query: query.isEmpty ? null : query,
-      );
-
-      final rawData = (response as Map)['data'];
-      if (rawData is Map<String, dynamic>) {
-        return Right(rawData);
-      } else if (rawData is Map) {
-        return Right(rawData.cast<String, dynamic>());
-      }
-      return const Right(<String, dynamic>{
-        'type': 'FeatureCollection',
-        'features': <dynamic>[],
-      });
     } on AppException catch (e) {
       return Left(ServerFailure(e.message));
     } on Object catch (e) {

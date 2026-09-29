@@ -1,7 +1,7 @@
-import 'package:gate_closes/core/errors/failure.dart';
-import 'package:gate_closes/features/location/domain/entities/location_coordinates.dart';
-import 'package:gate_closes/features/terminal_echo/domain/entities/terminal_echo_entity.dart';
 import 'package:fpdart/fpdart.dart';
+import 'package:gate_closes/core/errors/failure.dart';
+import 'package:gate_closes/core/location/location_coordinates.dart';
+import 'package:gate_closes/features/terminal_echo/domain/entities/terminal_echo_entity.dart';
 
 abstract class TerminalEchoRepository {
   /// Fetches the echoes for an airport feed (or all if airportIata is null).
@@ -31,14 +31,6 @@ abstract class TerminalEchoRepository {
 
   /// Increments listen count when an audio echo is played.
   Future<Either<Failure, void>> incrementListen(String echoId);
-
-  /// Fetches echo pins as a GeoJSON FeatureCollection (`GET /terminal-echo/map`).
-  Future<Either<Failure, Map<String, dynamic>>> getMapGeoJson({
-    double? west,
-    double? south,
-    double? east,
-    double? north,
-  });
 
   /// Fetches a single Terminal Echo by its id (`GET /terminal-echo/:id`).
   Future<Either<Failure, TerminalEchoEntity>> getEchoById(String id);

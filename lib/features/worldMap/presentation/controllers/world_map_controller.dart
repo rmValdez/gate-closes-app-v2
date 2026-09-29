@@ -2,10 +2,17 @@ import 'dart:async';
 
 import 'package:equatable/equatable.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gate_closes/core/location/location_repository_impl.dart';
 import 'package:gate_closes/features/airport/domain/entities/airport_entity.dart';
 import 'package:gate_closes/features/airport/presentation/controllers/airport_controller.dart';
-import 'package:gate_closes/features/terminal_echo/domain/entities/terminal_echo_map_node_entity.dart';
-import 'package:gate_closes/features/terminal_echo/presentation/controllers/terminal_echo_controller.dart';
+import 'package:gate_closes/features/auth/presentation/controllers/auth_controller.dart';
+import 'package:gate_closes/features/worldMap/data/repositories/echo_map_repository_impl.dart';
+import 'package:gate_closes/features/worldMap/domain/entities/echo_map_node_entity.dart';
+import 'package:gate_closes/features/worldMap/domain/repositories/echo_map_repository.dart';
+
+final echoMapRepositoryProvider = Provider<EchoMapRepository>((ref) {
+  return EchoMapRepositoryImpl(ref.watch(apiServiceProvider));
+});
 
 class WorldMapState extends Equatable {
   const WorldMapState({
@@ -65,7 +72,7 @@ class WorldMapController extends Notifier<WorldMapState> {
 
     final locationRepo = ref.read(locationRepositoryProvider);
     final airportRepo = ref.read(airportRepositoryProvider);
-    final echoRepo = ref.read(terminalEchoRepositoryProvider);
+    final echoMapRepo = ref.read(echoMapRepositoryProvider);
 
     // 1. Load airport boundaries GeoJSON
     final boundaryResult = await airportRepo.getAirportGeoJson();
@@ -75,17 +82,8 @@ class WorldMapController extends Notifier<WorldMapState> {
     );
 
     // 2. Load echo pins GeoJSON
-    final echoResult = await echoRepo.getMapGeoJson();
-    final echoNodes = echoResult.fold(
-      (_) => <TerminalEchoMapNodeEntity>[],
-      (geoJson) {
-        final features = geoJson['features'];
-        if (features is! List) return <TerminalEchoMapNodeEntity>[];
-        return features
-            .whereType<Map<String, dynamic>>()
-            .map(TerminalEchoMapNodeEntity.fromGeoJsonFeature)
-            .toList();
-      },
+    final echoNodes = (await echoMapRepo.getNodes()).getOrElse(
+      (_) => const <TerminalEchoMapNodeEntity>[],
     );
 
     // 3. Resolve user location and nearby airports
@@ -128,25 +126,13 @@ class WorldMapController extends Notifier<WorldMapState> {
     required double east,
     required double north,
   }) async {
-    final echoRepo = ref.read(terminalEchoRepositoryProvider);
-    final res = await echoRepo.getMapGeoJson(
-      west: west,
-      south: south,
-      east: east,
-      north: north,
-    );
-    res.fold(
-      (_) => null,
-      (geoJson) {
-        final features = geoJson['features'];
-        if (features is! List) return;
-        final nodes = features
-            .whereType<Map<String, dynamic>>()
-            .map(TerminalEchoMapNodeEntity.fromGeoJsonFeature)
-            .toList();
-        state = state.copyWith(echoNodes: nodes);
-      },
-    );
+    final res = await ref.read(echoMapRepositoryProvider).getNodes(
+          west: west,
+          south: south,
+          east: east,
+          north: north,
+        );
+    res.fold((_) => null, (nodes) => state = state.copyWith(echoNodes: nodes));
   }
 
   void selectAirport(AirportEntity airport) {

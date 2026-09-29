@@ -152,7 +152,7 @@ class _EchoTile extends ConsumerWidget {
     final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
 
     return InkWell(
-      onTap: () => context.push(RouteNames.echoThread, extra: echo),
+      onTap: () => context.push(RouteNames.echoThreadFor(echo.id), extra: echo),
       borderRadius: BorderRadius.circular(16),
       child: GlassCard(
         child: Column(
@@ -171,73 +171,73 @@ class _EchoTile extends ConsumerWidget {
                     ),
                   ),
                 ),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: Text(
-                  name,
-                  style: TextStyle(
-                    color: colors.textPrimary,
-                    fontWeight: FontWeight.w600,
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    name,
+                    style: TextStyle(
+                      color: colors.textPrimary,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-              ),
+                Text(
+                  _timeAgo(echo.createdAt),
+                  style: TextStyle(color: colors.textMuted, fontSize: 11),
+                ),
+              ],
+            ),
+            if (echo.textMessage.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.sm),
               Text(
-                _timeAgo(echo.createdAt),
-                style: TextStyle(color: colors.textMuted, fontSize: 11),
+                echo.textMessage,
+                style: TextStyle(color: colors.textSecondary, fontSize: 14),
               ),
             ],
-          ),
-          if (echo.textMessage.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              echo.textMessage,
-              style: TextStyle(color: colors.textSecondary, fontSize: 14),
-            ),
-          ],
-          if (echo.isVoiceMemo) ...[
-            const SizedBox(height: AppSpacing.sm),
-            WaveformPlayer(
-              audioUrl: echo.fileUrl!,
-              waveformData: echo.waveformData,
-              durationSeconds: echo.audioDuration,
-              onListenThresholdReached: () => unawaited(
-                ref
-                    .read(terminalEchoControllerProvider.notifier)
-                    .incrementListen(echo.id),
-              ),
-            ),
-          ],
-          const SizedBox(height: AppSpacing.sm),
-          Row(
-            children: [
-              GestureDetector(
-                onTap: () => unawaited(_react(context, ref)),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.favorite_border_rounded,
-                      size: 14,
-                      color: colors.textMuted,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${echo.totalReactions}',
-                      style: TextStyle(color: colors.textMuted, fontSize: 12),
-                    ),
-                  ],
+            if (echo.isVoiceMemo) ...[
+              const SizedBox(height: AppSpacing.sm),
+              WaveformPlayer(
+                audioUrl: echo.fileUrl!,
+                waveformData: echo.waveformData,
+                durationSeconds: echo.audioDuration,
+                onListenThresholdReached: () => unawaited(
+                  ref
+                      .read(terminalEchoControllerProvider.notifier)
+                      .incrementListen(echo.id),
                 ),
               ),
-              const SizedBox(width: AppSpacing.md),
-              Icon(Icons.hearing_rounded, size: 14, color: colors.textMuted),
-              const SizedBox(width: 4),
-              Text(
-                '${echo.countListens}',
-                style: TextStyle(color: colors.textMuted, fontSize: 12),
-              ),
             ],
-          ),
-        ],
-      ),
+            const SizedBox(height: AppSpacing.sm),
+            Row(
+              children: [
+                GestureDetector(
+                  onTap: () => unawaited(_react(context, ref)),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.favorite_border_rounded,
+                        size: 14,
+                        color: colors.textMuted,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${echo.totalReactions}',
+                        style: TextStyle(color: colors.textMuted, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Icon(Icons.hearing_rounded, size: 14, color: colors.textMuted),
+                const SizedBox(width: 4),
+                Text(
+                  '${echo.countListens}',
+                  style: TextStyle(color: colors.textMuted, fontSize: 12),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -1,5 +1,5 @@
-import 'package:gate_closes/features/location/domain/entities/location_coordinates.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gate_closes/core/location/location_coordinates.dart';
 
 void main() {
   group('LocationCoordinates Domain Entity & Quantization', () {

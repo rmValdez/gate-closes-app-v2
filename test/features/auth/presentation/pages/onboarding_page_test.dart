@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:fpdart/fpdart.dart';
 import 'package:gate_closes/core/services/storage_service.dart';
 import 'package:gate_closes/features/auth/data/models/user_model.dart';
 import 'package:gate_closes/features/auth/data/repositories/auth_repository.dart';
 import 'package:gate_closes/features/auth/domain/entities/user_entity.dart';
 import 'package:gate_closes/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:gate_closes/features/auth/presentation/pages/onboarding_page.dart';
+import 'package:gate_closes/features/boarding_pass/presentation/widgets/boarding_pass_scanner_sheet.dart';
 import 'package:gate_closes/features/flight/domain/repositories/flight_repository.dart';
 import 'package:gate_closes/features/flight/presentation/controllers/flight_controller.dart';
 import 'package:gate_closes/l10n/generated/app_localizations.dart';
-import 'package:flutter_test/flutter_test.dart';
-import 'package:fpdart/fpdart.dart';
 import 'package:mocktail/mocktail.dart';
 
 class MockStorageService extends Mock implements StorageService {}
@@ -48,7 +49,7 @@ void main() {
         ),
       ),
     );
-    when(mockStorage.setOnboardingSeen).thenAnswer((_) async {});
+    when(() => mockStorage.setOnboardingSeen(any())).thenAnswer((_) async {});
     when(mockFlightRepository.getActiveFlightTicket).thenAnswer(
       (_) async => const Right(null),
     );
@@ -61,10 +62,16 @@ void main() {
         authRepositoryProvider.overrideWithValue(mockAuthRepository),
         flightRepositoryProvider.overrideWithValue(mockFlightRepository),
       ],
-      child: const MaterialApp(
+      child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        home: OnboardingPage(),
+        home: OnboardingPage(
+          // Mirrors the router's injection in app_routes.dart.
+          boardingPassStep: (onCompleted) => BoardingPassScannerSheet(
+            completeButtonText: 'COMPLETE ONBOARDING',
+            onCompleted: onCompleted,
+          ),
+        ),
       ),
     );
   }

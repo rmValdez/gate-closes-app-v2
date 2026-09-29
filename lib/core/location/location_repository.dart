@@ -1,6 +1,6 @@
-import 'package:gate_closes/core/errors/failure.dart';
-import 'package:gate_closes/features/location/domain/entities/location_coordinates.dart';
 import 'package:fpdart/fpdart.dart';
+import 'package:gate_closes/core/errors/failure.dart';
+import 'package:gate_closes/core/location/location_coordinates.dart';
 
 abstract class LocationRepository {
   /// Request device location permissions. Returns true if granted.

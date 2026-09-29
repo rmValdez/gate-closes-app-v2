@@ -51,7 +51,7 @@ This system reduces these failure modes through a mix of **tooling-enforced** an
 | Strict linting (`very_good_analysis`) | `flutter analyze` | ✅ Yes |
 | Formatting | `dart format` | ✅ Yes |
 | Tests pass | `flutter test` | ✅ Yes |
-| No cross-feature imports | CI guard script | ✅ Yes (except `auth`) |
+| No cross-feature imports | CI guard script | ✅ Yes (except shared `auth`/`airport`/`flight`) |
 | Design-system tokens (no ad-hoc UI values) | Convention + review | ❌ No (review only) |
 | No API calls / raw HTTP in UI | Convention + review | ❌ No (review only) |
 
@@ -66,7 +66,7 @@ These rules are enforced at architecture level:
 - **No API calls inside UI layer**
 - **No unhandled exceptions in presentation layer**
 - **No hardcoded spacing, colors, or typography**
-- **No cross-feature imports** *(except the shared `auth`/session feature — see Handbook §2.4)*
+- **No cross-feature imports** *(except the shared features that own app-wide state — `auth` (session), `airport` (current airport), `flight` (active flight); see Handbook §2.4). Infrastructure goes in `lib/core`, shared widgets in `lib/shared`.*
 - **No raw HTTP usage outside ApiService**
 - **No state mutation outside Riverpod controllers**
 
@@ -190,7 +190,7 @@ On every **Pull Request** and **Push to Main**, GitHub Actions will automaticall
 2. **Generate Localization**: Runs `flutter gen-l10n`.
 3. **Format Check**: Runs `dart format` to ensure strict syntax styling. (Fails the build if unformatted).
 4. **Lint Gate**: Runs `flutter analyze` to catch unused imports and bad practices. (Fails the build if issues exist).
-5. **Feature Isolation Gate**: A guard script fails the build if a feature imports another feature's code (the shared `auth` feature is exempt).
+5. **Feature Isolation Gate**: A guard script fails the build if a feature imports another feature's code (the shared `auth`, `airport` and `flight` features are exempt).
 6. **Test Gate**: Runs `flutter test` across the entire project. (Fails the build if tests fail).
 
 *Violations of the gates above cannot reach the main branch by design. Conventions not on this list (design tokens, no-API-in-UI) are enforced by code review, not CI.*
@@ -301,15 +301,9 @@ flutter build appbundle --release --dart-define-from-file=.env.prod -t lib/main.
 flutter build ios --release --dart-define-from-file=.env.prod -t lib/main.dart
 ```
 
-**Windows:**
-```bash
-flutter build windows --release --dart-define-from-file=.env.prod -t lib/main.dart
-```
-
-**Web:**
-```bash
-flutter build web --release --dart-define-from-file=.env.prod -t lib/main.dart
-```
+Android and iOS only — the map (`mapbox_maps_flutter`) and the boarding-pass
+camera have no desktop/web implementations, so those platform folders were
+removed.
 
 ### 📋 The Official Release Checklist
 Before tagging a release or deploying, run through this strict checklist:

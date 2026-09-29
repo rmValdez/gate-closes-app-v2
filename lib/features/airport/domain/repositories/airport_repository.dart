@@ -1,7 +1,7 @@
-import 'package:gate_closes/core/errors/failure.dart';
-import 'package:gate_closes/features/airport/domain/entities/airport_entity.dart';
-import 'package:gate_closes/features/location/domain/entities/location_coordinates.dart';
 import 'package:fpdart/fpdart.dart';
+import 'package:gate_closes/core/errors/failure.dart';
+import 'package:gate_closes/core/location/location_coordinates.dart';
+import 'package:gate_closes/features/airport/domain/entities/airport_entity.dart';
 
 abstract class AirportRepository {
   /// Evaluates whether the given quantized coordinates are inside or

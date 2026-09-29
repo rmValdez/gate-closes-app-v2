@@ -1,12 +1,12 @@
+import 'package:fpdart/fpdart.dart';
 import 'package:gate_closes/core/constants/api_endpoints.dart';
 import 'package:gate_closes/core/errors/exceptions.dart';
 import 'package:gate_closes/core/errors/failure.dart';
+import 'package:gate_closes/core/location/location_coordinates.dart';
 import 'package:gate_closes/core/services/api_service.dart';
 import 'package:gate_closes/features/airport/data/models/airport_model.dart';
 import 'package:gate_closes/features/airport/domain/entities/airport_entity.dart';
 import 'package:gate_closes/features/airport/domain/repositories/airport_repository.dart';
-import 'package:gate_closes/features/location/domain/entities/location_coordinates.dart';
-import 'package:fpdart/fpdart.dart';
 import 'package:geolocator/geolocator.dart';
 
 class AirportRepositoryImpl implements AirportRepository {

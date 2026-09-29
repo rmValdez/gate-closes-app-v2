@@ -32,10 +32,8 @@ class TerminalEchoMapNodeEntity extends Equatable {
         (feature['geometry'] as Map?)?.cast<String, dynamic>() ?? {};
     final coordinates = (geometry['coordinates'] as List?) ?? [0.0, 0.0];
 
-    final rawType = (properties['type'] ??
-            feature['type'] ??
-            'terminal_echo')
-        .toString();
+    final rawType =
+        (properties['type'] ?? feature['type'] ?? 'terminal_echo').toString();
     EchoNodeKind kind;
     switch (rawType) {
       case 'parallel_soul':
@@ -48,11 +46,8 @@ class TerminalEchoMapNodeEntity extends Equatable {
         kind = EchoNodeKind.terminalEcho;
     }
 
-    final id = (feature['id'] ??
-            feature['_id'] ??
-            properties['id'] ??
-            '')
-        .toString();
+    final id =
+        (feature['id'] ?? feature['_id'] ?? properties['id'] ?? '').toString();
     final senderId = (properties['senderId'] ?? '').toString();
     final lng = coordinates.isNotEmpty && coordinates[0] is num
         ? (coordinates[0] as num).toDouble()

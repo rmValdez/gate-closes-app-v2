@@ -22,6 +22,13 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: 🔐 Provide env assets
+        # .env.dev/.env.prod are git-ignored but declared as pubspec assets,
+        # so the build/test fails without them. CI uses the example values.
+        run: |
+          cp .env.example .env.dev
+          cp .env.example .env.prod
+
       - name: 📦 Install dependencies
         run: flutter pub get
 
@@ -36,22 +43,35 @@ jobs:
 
       - name: 🧱 Enforce Feature Isolation (no cross-feature imports)
         run: |
-          # 'auth' owns app-wide session/identity state and is the one
-          # sanctioned shared feature other features may import (Handbook §2.4).
+          # Shared features own app-wide state that other features read (Handbook
+          # §2.4). They are the only features another feature may import:
+          #   auth    — session / signed-in user
+          #   airport — the airport the user is at (detection, nearby search)
+          #   flight  — the user's active flight ticket
+          # Everything else a feature needs from another belongs in lib/core
+          # (infrastructure: location, offline airport registry, sockets) or
+          # lib/shared (widgets), or is injected by the router — see how
+          # onboarding receives the boarding-pass step in app_routes.dart.
+          shared="auth airport flight"
           fail=0
           for dir in lib/features/*/; do
             feature=$(basename "$dir")
-            matches=$(grep -rnE "import 'package:gate_closes/features/" "$dir" \
-              | grep -vE "features/$feature/" \
-              | grep -vE "features/auth/" || true)
-            if [ -n "$matches" ]; then
-              echo "::error::Cross-feature import detected in feature '$feature':"
-              echo "$matches"
-              fail=1
-            fi
+            # -h: match on the import text only. (With file names in the
+            # output every line contained "features/$feature/", so the old
+            # filter silently discarded every violation.)
+            deps=$(grep -rhoE "^import 'package:gate_closes/features/[^/]+/" "$dir" \
+              | sed -E 's#.*/features/([^/]+)/#\1#' | sort -u)
+            for dep in $deps; do
+              [ "$dep" = "$feature" ] && continue
+              if ! echo " $shared " | grep -q " $dep "; then
+                echo "::error::Feature '$feature' imports from feature '$dep':"
+                grep -rn "^import 'package:gate_closes/features/$dep/" "$dir"
+                fail=1
+              fi
+            done
           done
           if [ "$fail" -ne 0 ]; then
-            echo "Features must not import from other features (except 'auth'). See the Engineering Handbook §2.4."
+            echo "Features may only import the shared features ($shared). See the Engineering Handbook §2.4."
             exit 1
           fi
           echo "✅ No disallowed cross-feature imports found."

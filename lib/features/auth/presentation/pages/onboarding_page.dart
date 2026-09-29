@@ -8,7 +8,6 @@ import 'package:gate_closes/core/services/storage_service.dart';
 import 'package:gate_closes/core/utils/context_extensions.dart';
 import 'package:gate_closes/core/utils/validators.dart';
 import 'package:gate_closes/features/auth/presentation/controllers/auth_controller.dart';
-import 'package:gate_closes/features/boarding_pass/presentation/widgets/boarding_pass_scanner_sheet.dart';
 import 'package:gate_closes/routes/route_names.dart';
 import 'package:gate_closes/shared/widgets/ambient_background.dart';
 import 'package:gate_closes/shared/widgets/buttons.dart';
@@ -20,9 +19,14 @@ import 'package:go_router/go_router.dart';
 /// Full onboarding flow matching React Native Expo:
 /// Step 0: Welcome Screen (Animated radar pulse hero, logo, "Enter GateCloses")
 /// Step 1: Profile Setup (Username + Gender selector)
-/// Step 2: Boarding Pass Capture (BoardingPassScannerSheet with scan/OCR/entry)
+/// Step 2: Boarding Pass Capture — supplied by [boardingPassStep].
 class OnboardingPage extends ConsumerStatefulWidget {
-  const OnboardingPage({super.key});
+  const OnboardingPage({required this.boardingPassStep, super.key});
+
+  /// Builds the boarding-pass step; call `onCompleted` when the user is done.
+  /// Injected by the router (the composition root) so `auth` doesn't import
+  /// the `boarding_pass` feature.
+  final Widget Function(VoidCallback onCompleted) boardingPassStep;
 
   @override
   ConsumerState<OnboardingPage> createState() => _OnboardingPageState();
@@ -63,7 +67,10 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   }
 
   Future<void> _completeOnboarding() async {
-    await ref.read(storageServiceProvider).setOnboardingSeen();
+    final userId = ref.read(authControllerProvider).user?.id;
+    if (userId != null) {
+      await ref.read(storageServiceProvider).setOnboardingSeen(userId);
+    }
     if (mounted) {
       context.go(RouteNames.home);
     }
@@ -145,7 +152,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                   children: [
                     _WelcomeStep(onEnter: _nextStep),
                     _ProfileSetupStep(onCompleted: _nextStep),
-                    _BoardingPassStep(onCompleted: _completeOnboarding),
+                    widget.boardingPassStep(_completeOnboarding),
                   ],
                 ),
               ),
@@ -425,7 +432,7 @@ class _ProfileSetupStepState extends ConsumerState<_ProfileSetupStep> {
             const SizedBox(height: AppSpacing.xl),
             ModernTextField(
               label: 'USERNAME',
-              hint: 'Traveler123.45',
+              hint: 'traveler_jane',
               controller: _usernameController,
               prefixIcon: Icons.badge_outlined,
               validator: Validators.username,
@@ -489,24 +496,6 @@ class _ProfileSetupStepState extends ConsumerState<_ProfileSetupStep> {
           ],
         ),
       ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Step 2: Boarding Pass Step
-// ---------------------------------------------------------------------------
-
-class _BoardingPassStep extends StatelessWidget {
-  const _BoardingPassStep({required this.onCompleted});
-
-  final VoidCallback onCompleted;
-
-  @override
-  Widget build(BuildContext context) {
-    return BoardingPassScannerSheet(
-      completeButtonText: 'COMPLETE ONBOARDING',
-      onCompleted: onCompleted,
     );
   }
 }

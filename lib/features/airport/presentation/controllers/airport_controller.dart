@@ -1,18 +1,13 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gate_closes/core/location/location_coordinates.dart';
+import 'package:gate_closes/core/location/location_repository_impl.dart';
 import 'package:gate_closes/features/airport/data/repositories/airport_repository_impl.dart';
 import 'package:gate_closes/features/airport/domain/entities/airport_entity.dart';
 import 'package:gate_closes/features/airport/domain/repositories/airport_repository.dart';
 import 'package:gate_closes/features/auth/presentation/controllers/auth_controller.dart';
-import 'package:gate_closes/features/location/data/repositories/location_repository_impl.dart';
-import 'package:gate_closes/features/location/domain/entities/location_coordinates.dart';
-import 'package:gate_closes/features/location/domain/repositories/location_repository.dart';
 
 // --- Dependency wiring ---
-
-final locationRepositoryProvider = Provider<LocationRepository>((ref) {
-  return const LocationRepositoryImpl();
-});
 
 final airportRepositoryProvider = Provider<AirportRepository>((ref) {
   return AirportRepositoryImpl(ref.watch(apiServiceProvider));

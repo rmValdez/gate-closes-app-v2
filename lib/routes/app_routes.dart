@@ -7,6 +7,7 @@ import 'package:gate_closes/features/auth/presentation/pages/login_page.dart';
 import 'package:gate_closes/features/auth/presentation/pages/onboarding_page.dart';
 import 'package:gate_closes/features/auth/presentation/pages/register_page.dart';
 import 'package:gate_closes/features/boarding_pass/presentation/pages/add_boarding_pass_page.dart';
+import 'package:gate_closes/features/boarding_pass/presentation/widgets/boarding_pass_scanner_sheet.dart';
 import 'package:gate_closes/features/connections/presentation/pages/connections_page.dart';
 import 'package:gate_closes/features/flight/domain/entities/flight_ticket_entity.dart';
 import 'package:gate_closes/features/profile/presentation/pages/change_password_page.dart';
@@ -15,7 +16,7 @@ import 'package:gate_closes/features/profile/presentation/pages/profile_page.dar
 import 'package:gate_closes/features/terminal_echo/domain/entities/terminal_echo_entity.dart';
 import 'package:gate_closes/features/terminal_echo/presentation/pages/airport_search_page.dart';
 import 'package:gate_closes/features/terminal_echo/presentation/pages/create_echo_page.dart';
-import 'package:gate_closes/features/terminal_echo/presentation/pages/echo_thread_page.dart';
+import 'package:gate_closes/features/terminal_echo/presentation/pages/echo_thread_loader_page.dart';
 import 'package:gate_closes/features/terminal_echo/presentation/pages/feed_page.dart';
 import 'package:gate_closes/features/worldMap/presentation/pages/world_map_page.dart';
 import 'package:gate_closes/routes/route_names.dart';
@@ -51,7 +52,8 @@ final goRouterProvider = Provider<GoRouter>((ref) {
     initialLocation: RouteNames.home,
     refreshListenable: notifier,
     redirect: (context, state) {
-      final isAuth = ref.read(authControllerProvider).isAuthenticated;
+      final user = ref.read(authControllerProvider).user;
+      final isAuth = user != null;
       final goingToLogin = state.matchedLocation == RouteNames.login;
       final goingToRegister = state.matchedLocation == RouteNames.register;
       final goingToForgotPassword =
@@ -64,7 +66,8 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       }
 
       // Onboarding gate: new users see it once.
-      final seenOnboarding = ref.read(storageServiceProvider).onboardingSeen;
+      final seenOnboarding =
+          ref.read(storageServiceProvider).isOnboardingSeen(user.id);
       if (!seenOnboarding) {
         final goingToOnboarding =
             state.matchedLocation == RouteNames.onboarding;
@@ -91,7 +94,12 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: RouteNames.onboarding,
-        builder: (context, state) => const OnboardingPage(),
+        builder: (context, state) => OnboardingPage(
+          boardingPassStep: (onCompleted) => BoardingPassScannerSheet(
+            completeButtonText: 'COMPLETE ONBOARDING',
+            onCompleted: onCompleted,
+          ),
+        ),
       ),
       GoRoute(
         path: RouteNames.createEcho,
@@ -100,8 +108,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: RouteNames.echoThread,
         builder: (context, state) {
-          final echo = state.extra! as TerminalEchoEntity;
-          return EchoThreadPage(echo: echo);
+          final extra = state.extra;
+          return EchoThreadLoaderPage(
+            echoId: state.pathParameters['echoId']!,
+            initialEcho: extra is TerminalEchoEntity ? extra : null,
+          );
         },
       ),
       GoRoute(
@@ -130,11 +141,6 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteNames.home,
             builder: (context, state) => const ConnectionsPage(),
-          ),
-          GoRoute(
-            path: RouteNames.recommendations,
-            builder: (context, state) =>
-                const Scaffold(body: Center(child: Text('Recommendations'))),
           ),
           GoRoute(
             path: RouteNames.worldMap,

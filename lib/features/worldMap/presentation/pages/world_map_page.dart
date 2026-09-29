@@ -1,11 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gate_closes/core/utils/context_extensions.dart';
 import 'package:gate_closes/features/airport/domain/entities/airport_entity.dart';
-import 'package:gate_closes/features/terminal_echo/domain/entities/terminal_echo_map_node_entity.dart';
-import 'package:gate_closes/features/terminal_echo/presentation/controllers/terminal_echo_controller.dart';
+import 'package:gate_closes/features/worldMap/domain/entities/echo_map_node_entity.dart';
 import 'package:gate_closes/features/worldMap/presentation/controllers/world_map_controller.dart';
 import 'package:gate_closes/routes/route_names.dart';
 import 'package:gate_closes/shared/widgets/app_card.dart';
@@ -14,8 +14,16 @@ import 'package:gate_closes/shared/widgets/glass_card.dart';
 import 'package:gate_closes/theme/tokens/colors.dart';
 import 'package:gate_closes/theme/tokens/spacing.dart';
 import 'package:go_router/go_router.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 
 enum MapDisplayMode { spatialView, nearbyList }
+
+const Map<String, Object> _kEmptyFeatureCollection = {
+  'type': 'FeatureCollection',
+  'features': <Object>[],
+};
+const _kAirportBoundarySourceId = 'airport-boundaries-source';
+const _kEchoNodesManagerId = 'echo-nodes-annotation-manager';
 
 class WorldMapPage extends ConsumerStatefulWidget {
   const WorldMapPage({super.key});
@@ -27,8 +35,22 @@ class WorldMapPage extends ConsumerStatefulWidget {
 class _WorldMapPageState extends ConsumerState<WorldMapPage> {
   MapDisplayMode _mode = MapDisplayMode.spatialView;
 
+  MapboxMap? _mapboxMap;
+  GeoJsonSource? _boundarySource;
+  CircleAnnotationManager? _echoAnnotationManager;
+  Timer? _boundsDebounceTimer;
+  AirportEntity? _lastFlownToAirport;
+
+  @override
+  void dispose() {
+    _boundsDebounceTimer?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
+    ref.listen<WorldMapState>(worldMapControllerProvider, _onStateChanged);
+
     final state = ref.watch(worldMapControllerProvider);
     final colors = context.colors;
 
@@ -79,6 +101,22 @@ class _WorldMapPageState extends ConsumerState<WorldMapPage> {
     );
   }
 
+  void _onStateChanged(WorldMapState? previous, WorldMapState next) {
+    final boundaryChanged = !identical(
+      previous?.airportBoundariesGeoJson,
+      next.airportBoundariesGeoJson,
+    );
+    if (boundaryChanged) {
+      unawaited(_syncBoundary(next.airportBoundariesGeoJson));
+    }
+    if (previous?.echoNodes != next.echoNodes) {
+      unawaited(_syncEchoNodes(next.echoNodes));
+    }
+    if (previous?.selectedAirport != next.selectedAirport) {
+      _flyToAirport(next.selectedAirport);
+    }
+  }
+
   Widget _buildSpatialView(
     BuildContext context,
     GateColors colors,
@@ -92,28 +130,17 @@ class _WorldMapPageState extends ConsumerState<WorldMapPage> {
 
     return Stack(
       children: [
-        // Spatial airport background visualization
-        Container(
-          width: double.infinity,
-          height: double.infinity,
-          decoration: BoxDecoration(
-            gradient: RadialGradient(
-              radius: 0.85,
-              colors: [
-                colors.accent.withValues(alpha: 0.12),
-                colors.background,
-              ],
-            ),
-          ),
-          child: CustomPaint(
-            painter: _AirportBoundaryRadarPainter(
-              boundaryColor: colors.accent,
-              radarPulseColor: colors.accent.withValues(alpha: 0.25),
-            ),
+        Positioned.fill(
+          child: MapWidget(
+            key: const ValueKey('world-map-widget'),
+            styleUri: MapboxStyles.DARK,
+            onMapCreated: _onMapCreated,
+            onStyleLoadedListener: _onStyleLoaded,
+            onMapIdleListener: _onMapIdle,
           ),
         ),
 
-        // Foreground content & echo nodes overlay
+        // Foreground content overlay
         SafeArea(
           child: Column(
             children: [
@@ -178,52 +205,6 @@ class _WorldMapPageState extends ConsumerState<WorldMapPage> {
                     ),
                   ),
                 ),
-
-              // Spatial Echo Pins List / Overlay
-              Expanded(
-                child: state.echoNodes.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.radar_rounded,
-                              size: 54,
-                              color: colors.textMuted.withValues(alpha: 0.4),
-                            ),
-                            const SizedBox(height: AppSpacing.md),
-                            Text(
-                              'Scanning Terminal Echo Nodes...',
-                              style: TextStyle(
-                                color: colors.textMuted,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: AppSpacing.xs),
-                            Text(
-                              'No spatial echo nodes currently detected',
-                              style: TextStyle(
-                                color: colors.textMuted,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    : ListView.separated(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppSpacing.md,
-                          vertical: AppSpacing.sm,
-                        ),
-                        itemCount: state.echoNodes.length,
-                        separatorBuilder: (_, __) =>
-                            const SizedBox(height: AppSpacing.sm),
-                        itemBuilder: (context, index) {
-                          final node = state.echoNodes[index];
-                          return _EchoNodeCard(node: node);
-                        },
-                      ),
-              ),
             ],
           ),
         ),
@@ -310,178 +291,171 @@ class _WorldMapPageState extends ConsumerState<WorldMapPage> {
       },
     );
   }
-}
 
-class _EchoNodeCard extends ConsumerWidget {
-  const _EchoNodeCard({required this.node});
+  // ---------------------------------------------------------------------
+  // Mapbox wiring
+  // ---------------------------------------------------------------------
 
-  final TerminalEchoMapNodeEntity node;
+  void _onMapCreated(MapboxMap map) {
+    _mapboxMap = map;
+    final selected = ref.read(worldMapControllerProvider).selectedAirport;
+    if (selected != null) {
+      _flyToAirport(selected, animated: false);
+    }
+  }
 
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final colors = context.colors;
+  Future<void> _onStyleLoaded(StyleLoadedEventData _) async {
+    final map = _mapboxMap;
+    if (map == null) return;
 
-    final (badgeLabel, badgeColor, nodeIcon) = switch (node.nodeKind) {
-      EchoNodeKind.parallelSoul => (
-          'PARALLEL SOUL',
-          const Color(0xFF6366F1),
-          Icons.sync_alt_rounded
-        ),
-      EchoNodeKind.destinationThread => (
-          'DESTINATION THREAD',
-          const Color(0xFF10B981),
-          Icons.call_merge_rounded
-        ),
-      EchoNodeKind.batonTouch => (
-          'BATON TOUCH',
-          const Color(0xFFF59E0B),
-          Icons.swap_calls_rounded
-        ),
-      EchoNodeKind.terminalEcho => (
-          'TERMINAL ECHO',
-          colors.accent,
-          Icons.cell_tower_rounded,
-        ),
-    };
+    final boundarySource = GeoJsonSource(
+      id: _kAirportBoundarySourceId,
+      data: jsonEncode(_kEmptyFeatureCollection),
+    );
+    await map.style.addSource(boundarySource);
+    _boundarySource = boundarySource;
 
-    return GlassCard(
-      child: ListTile(
-        contentPadding: EdgeInsets.zero,
-        leading: CircleAvatar(
-          backgroundColor: badgeColor.withValues(alpha: 0.2),
-          child: Icon(nodeIcon, color: badgeColor, size: 20),
-        ),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: badgeColor.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                badgeLabel,
-                style: TextStyle(
-                  color: badgeColor,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-            const Spacer(),
-            if (node.isNew)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.lime.withValues(alpha: 0.25),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Text(
-                  'NEW',
-                  style: TextStyle(
-                    color: Colors.limeAccent,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-          ],
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: Row(
-            children: [
-              Icon(Icons.hearing_rounded, size: 14, color: colors.textMuted),
-              const SizedBox(width: 4),
-              Text(
-                '${node.listenCount}',
-                style: TextStyle(color: colors.textMuted, fontSize: 12),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Icon(Icons.reply_rounded, size: 14, color: colors.textMuted),
-              const SizedBox(width: 4),
-              Text(
-                '${node.replyCount}',
-                style: TextStyle(color: colors.textMuted, fontSize: 12),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Icon(
-                Icons.favorite_border_rounded,
-                size: 14,
-                color: colors.textMuted,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                '${node.reactionCount}',
-                style: TextStyle(color: colors.textMuted, fontSize: 12),
-              ),
-            ],
-          ),
-        ),
-        trailing: Icon(
-          Icons.chevron_right_rounded,
-          color: colors.textMuted,
-        ),
-        onTap: () async {
-          // Fetch full echo entity and navigate to thread
-          final repo = ref.read(terminalEchoRepositoryProvider);
-          final res = await repo.getEchoById(node.id);
-          res.fold(
-            (_) => null,
-            (echo) {
-              if (context.mounted) {
-                unawaited(context.push(RouteNames.echoThread, extra: echo));
-              }
-            },
-          );
-        },
+    // Ported from gate-closes-app's AirportBoundariesLayer.tsx: fill +
+    // outline glow + crisp outline, same colors/opacities.
+    await map.style.addLayer(
+      FillLayer(
+        id: 'airport-boundaries-fill',
+        sourceId: _kAirportBoundarySourceId,
+        fillColor: const Color(0xFF7F8792).toARGB32(),
+        fillOpacity: 0.16,
       ),
     );
-  }
-}
+    await map.style.addLayer(
+      LineLayer(
+        id: 'airport-boundaries-outline-glow',
+        sourceId: _kAirportBoundarySourceId,
+        lineColor: const Color(0xFF7F8792).toARGB32(),
+        lineOpacity: 0.34,
+        lineWidth: 6,
+      ),
+    );
+    await map.style.addLayer(
+      LineLayer(
+        id: 'airport-boundaries-outline',
+        sourceId: _kAirportBoundarySourceId,
+        lineColor: const Color(0xFFC4CBD4).toARGB32(),
+        lineWidth: 1.5,
+      ),
+    );
 
-class _AirportBoundaryRadarPainter extends CustomPainter {
-  const _AirportBoundaryRadarPainter({
-    required this.boundaryColor,
-    required this.radarPulseColor,
-  });
+    final manager = await map.annotations.createCircleAnnotationManager(
+      id: _kEchoNodesManagerId,
+    );
+    manager.tapEvents(onTap: _onEchoAnnotationTap);
+    _echoAnnotationManager = manager;
 
-  final Color boundaryColor;
-  final Color radarPulseColor;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final maxRadius = size.width * 0.42;
-
-    final pulsePaint = Paint()
-      ..color = radarPulseColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-
-    // Draw concentric range rings (4km, 8km, 15km synthetic geofence scales)
-    canvas
-      ..drawCircle(center, maxRadius * 0.33, pulsePaint)
-      ..drawCircle(center, maxRadius * 0.66, pulsePaint)
-      ..drawCircle(center, maxRadius, pulsePaint);
-
-    final linePaint = Paint()
-      ..color = boundaryColor.withValues(alpha: 0.12)
-      ..strokeWidth = 1.0;
-
-    canvas
-      ..drawLine(
-        Offset(center.dx, center.dy - maxRadius),
-        Offset(center.dx, center.dy + maxRadius),
-        linePaint,
-      )
-      ..drawLine(
-        Offset(center.dx - maxRadius, center.dy),
-        Offset(center.dx + maxRadius, center.dy),
-        linePaint,
-      );
+    if (!mounted) return;
+    final state = ref.read(worldMapControllerProvider);
+    await _syncBoundary(state.airportBoundariesGeoJson);
+    await _syncEchoNodes(state.echoNodes);
   }
 
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  void _onMapIdle(MapIdleEventData _) {
+    _boundsDebounceTimer?.cancel();
+    _boundsDebounceTimer =
+        Timer(const Duration(milliseconds: 300), _refetchNodesForCurrentBounds);
+  }
+
+  Future<void> _refetchNodesForCurrentBounds() async {
+    final map = _mapboxMap;
+    if (map == null) return;
+
+    final cameraState = await map.getCameraState();
+    final bounds = await map.coordinateBoundsForCamera(
+      CameraOptions(
+        center: cameraState.center,
+        zoom: cameraState.zoom,
+        bearing: cameraState.bearing,
+        pitch: cameraState.pitch,
+      ),
+    );
+
+    if (!mounted) return;
+    await ref.read(worldMapControllerProvider.notifier).fetchEchoNodesForBounds(
+          west: bounds.southwest.coordinates.lng.toDouble(),
+          south: bounds.southwest.coordinates.lat.toDouble(),
+          east: bounds.northeast.coordinates.lng.toDouble(),
+          north: bounds.northeast.coordinates.lat.toDouble(),
+        );
+  }
+
+  Future<void> _syncBoundary(Map<String, dynamic>? geoJson) async {
+    final source = _boundarySource;
+    if (source == null) return;
+    await source.updateGeoJSON(jsonEncode(geoJson ?? _kEmptyFeatureCollection));
+  }
+
+  Future<void> _syncEchoNodes(List<TerminalEchoMapNodeEntity> nodes) async {
+    final manager = _echoAnnotationManager;
+    if (manager == null || !mounted) return;
+
+    final colors = context.colors;
+    await manager.deleteAll();
+    if (nodes.isEmpty) return;
+
+    await manager.createMulti(
+      nodes.map((node) => _echoNodeCircleOptions(node, colors)).toList(),
+    );
+  }
+
+  CircleAnnotationOptions _echoNodeCircleOptions(
+    TerminalEchoMapNodeEntity node,
+    GateColors colors,
+  ) {
+    return CircleAnnotationOptions(
+      geometry: Point(coordinates: Position(node.longitude, node.latitude)),
+      circleRadius: node.isNew ? 10.0 : 8.0,
+      circleColor: _colorForNodeKind(node.nodeKind, colors).toARGB32(),
+      circleOpacity: 0.92,
+      circleStrokeColor: Colors.white.withValues(alpha: 0.85).toARGB32(),
+      circleStrokeWidth: node.isNew ? 2.5 : 1.5,
+      customData: {'nodeId': node.id},
+    );
+  }
+
+  Color _colorForNodeKind(EchoNodeKind kind, GateColors colors) =>
+      switch (kind) {
+        EchoNodeKind.parallelSoul => const Color(0xFF6366F1),
+        EchoNodeKind.destinationThread => const Color(0xFF10B981),
+        EchoNodeKind.batonTouch => const Color(0xFFF59E0B),
+        EchoNodeKind.terminalEcho => colors.accent,
+      };
+
+  void _onEchoAnnotationTap(CircleAnnotation annotation) {
+    final nodeId = annotation.customData?['nodeId'] as String?;
+    if (nodeId == null || nodeId.isEmpty) return;
+    unawaited(_openEchoThread(nodeId));
+  }
+
+  Future<void> _openEchoThread(String nodeId) async {
+    // The thread route loads the echo by id — no terminal_echo import needed.
+    await context.push(RouteNames.echoThreadFor(nodeId));
+  }
+
+  void _flyToAirport(AirportEntity? airport, {bool animated = true}) {
+    final map = _mapboxMap;
+    final lat = airport?.latitude;
+    final lng = airport?.longitude;
+    if (map == null || lat == null || lng == null) return;
+    if (identical(airport, _lastFlownToAirport)) return;
+    _lastFlownToAirport = airport;
+
+    final camera = CameraOptions(
+      center: Point(coordinates: Position(lng, lat)),
+      zoom: 15,
+      pitch: 0,
+      bearing: 0,
+    );
+
+    if (animated) {
+      unawaited(map.flyTo(camera, MapAnimationOptions(duration: 800)));
+    } else {
+      unawaited(map.setCamera(camera));
+    }
+  }
 }
