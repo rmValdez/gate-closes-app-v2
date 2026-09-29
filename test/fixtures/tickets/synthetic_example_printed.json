@@ -1,0 +1,17 @@
+{
+  "source": "photoText",
+  "capturedOn": "2026-09-29",
+  "notes": "SYNTHETIC example of the format, not a real ticket. Replace with real captures.",
+  "knownFailure": false,
+  "input": "PHILIPPINE AIRLINES\nBOARDING PASS\nNAME [REDACTED]\nFLIGHT PR 123   DATE 15OCT\nFROM MANILA MNL\nTO BANGKOK BKK\nBOARDING TIME 05:50  GATE 112  SEAT 24A",
+  "expected": {
+    "flightNumber": "PR123",
+    "origin": "MNL",
+    "destination": "BKK",
+    "departureDate": "2026-10-15",
+    "departureTime": null,
+    "seat": "24A",
+    "gate": "112"
+  },
+  "parsedAtCapture": null
+}
