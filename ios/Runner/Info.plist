@@ -26,6 +26,12 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Gate Closes uses your camera to scan the barcode on your boarding pass. The image is read on your device and never uploaded.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Gate Closes reads the flight details from a boarding pass screenshot or photo you choose. The image is read on your device and never uploaded.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Gate Closes uses your microphone to record voice echoes and voice messages for travelers you connect with.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Gate Closes uses your location to discover if you are at an airport terminal and connect you with nearby travelers.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
