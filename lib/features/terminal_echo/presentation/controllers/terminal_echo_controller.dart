@@ -1,8 +1,8 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gate_closes/core/location/location_coordinates.dart';
 import 'package:gate_closes/core/services/storage_service.dart';
 import 'package:gate_closes/features/auth/presentation/controllers/auth_controller.dart';
-import 'package:gate_closes/features/location/domain/entities/location_coordinates.dart';
 import 'package:gate_closes/features/terminal_echo/data/datasources/terminal_echo_socket_service.dart';
 import 'package:gate_closes/features/terminal_echo/data/models/terminal_echo_model.dart';
 import 'package:gate_closes/features/terminal_echo/data/repositories/terminal_echo_repository_impl.dart';
@@ -60,9 +60,13 @@ class TerminalEchoController extends Notifier<TerminalEchoState> {
 
   @override
   TerminalEchoState build() {
-    ref.onDispose(() {
-      _socketService?.disconnect();
-    });
+    // Reset (and drop the socket) whenever the signed-in user changes.
+    ref
+      ..watch(authControllerProvider.select((s) => s.user?.id))
+      ..onDispose(() {
+        _socketService?.disconnect();
+        _socketService = null;
+      });
     return const TerminalEchoState();
   }
 
@@ -71,6 +75,8 @@ class TerminalEchoController extends Notifier<TerminalEchoState> {
     state = state.copyWith(isLoading: true, currentAirportIata: airportIata);
     final repo = ref.read(terminalEchoRepositoryProvider);
     final result = await repo.getEchoes(airportIata: airportIata);
+    // The user may have switched airports while this feed was loading.
+    if (!ref.mounted || state.currentAirportIata != airportIata) return;
 
     result.fold(
       (failure) => state = state.copyWith(
@@ -88,11 +94,14 @@ class TerminalEchoController extends Notifier<TerminalEchoState> {
   }
 
   void _initSocket(String airportIata) {
-    final token = ref.read(storageServiceProvider).readUserModel()?.token;
     _socketService?.disconnect();
-    _socketService = TerminalEchoSocketService(token: token);
+    _socketService = TerminalEchoSocketService(
+      readToken: ref.read(storageServiceProvider).readToken,
+      revalidateSession: () =>
+          ref.read(authControllerProvider.notifier).refreshAuth(),
+    );
 
-    _socketService!.connect(
+    _socketService!.connectAirport(
       airportIata: airportIata,
       onNewEcho: (data) {
         final newEcho = TerminalEchoModel.fromJson(data);
@@ -102,47 +111,19 @@ class TerminalEchoController extends Notifier<TerminalEchoState> {
         }
       },
       onReactionUpdated: (data) {
-        final echoId = (data['terminalEchoId'] ?? data['_id'])?.toString();
-        if (echoId == null) return;
+        // Payload: {terminalEchoId, reactionKey, action, triggeredByUserId}
+        // — see gate-closes-api terminal.echo.controller.ts updateReaction.
+        final echoId = data['terminalEchoId']?.toString();
+        final reactionKey = data['reactionKey']?.toString();
+        final action = data['action']?.toString();
+        if (echoId == null || reactionKey == null || action == null) return;
 
-        final updatedList = state.echoes.map((e) {
-          if (e.id != echoId) return e;
-
-          final reaction = data['reaction']?.toString();
-          final direction = data['direction']?.toString();
-          final delta = direction == 'decrement' ? -1 : 1;
-
-          switch (reaction) {
-            case 'like':
-              return e.copyWith(
-                countReactLike: (e.countReactLike + delta).clamp(0, 99999),
-              );
-            case 'love':
-              return e.copyWith(
-                countReactLove: (e.countReactLove + delta).clamp(0, 99999),
-              );
-            case 'haha':
-              return e.copyWith(
-                countReactHaha: (e.countReactHaha + delta).clamp(0, 99999),
-              );
-            case 'wow':
-              return e.copyWith(
-                countReactWow: (e.countReactWow + delta).clamp(0, 99999),
-              );
-            case 'sad':
-              return e.copyWith(
-                countReactSad: (e.countReactSad + delta).clamp(0, 99999),
-              );
-            case 'angry':
-              return e.copyWith(
-                countReactAngry: (e.countReactAngry + delta).clamp(0, 99999),
-              );
-            default:
-              return e;
-          }
-        }).toList();
-
-        state = state.copyWith(echoes: updatedList);
+        state = state.copyWith(
+          echoes: [
+            for (final e in state.echoes)
+              e.id == echoId ? e.withReactionDelta(reactionKey, action) : e,
+          ],
+        );
       },
     );
   }

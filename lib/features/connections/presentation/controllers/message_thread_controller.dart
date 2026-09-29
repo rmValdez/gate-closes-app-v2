@@ -65,9 +65,14 @@ class MessageThreadController extends Notifier<MessageThreadState> {
 
   @override
   MessageThreadState build() {
-    ref.onDispose(() {
-      _socketService?.disconnect();
-    });
+    // Reset (and drop the socket) whenever the signed-in user changes.
+    ref
+      ..watch(authControllerProvider.select((s) => s.user?.id))
+      ..onDispose(() {
+        _socketService?.disconnect();
+        _socketService = null;
+        _conversationId = null;
+      });
     return const MessageThreadState();
   }
 
@@ -77,6 +82,8 @@ class MessageThreadController extends Notifier<MessageThreadState> {
 
     final repo = ref.read(messagesRepositoryProvider);
     final result = await repo.getMessages(conversationId: conversationId);
+    // The user may have opened another thread while this one was loading.
+    if (!ref.mounted || _conversationId != conversationId) return;
 
     result.fold(
       (failure) =>
@@ -91,9 +98,12 @@ class MessageThreadController extends Notifier<MessageThreadState> {
   }
 
   void _initSocket(String conversationId) {
-    final token = ref.read(storageServiceProvider).readUserModel()?.token;
     _socketService?.disconnect();
-    _socketService = ConversationSocketService(token: token);
+    _socketService = ConversationSocketService(
+      readToken: ref.read(storageServiceProvider).readToken,
+      revalidateSession: () =>
+          ref.read(authControllerProvider.notifier).refreshAuth(),
+    );
 
     _socketService!.connect(
       conversationId: conversationId,
@@ -103,23 +113,30 @@ class MessageThreadController extends Notifier<MessageThreadState> {
         state = state.copyWith(messages: [...state.messages, incoming]);
       },
       onReactionUpdated: (data) {
-        final messageId = (data['messageId'] ?? data['_id'])?.toString();
-        if (messageId == null) return;
+        // Payload: {action, messageId, reaction, conversation} — a toggle
+        // delta, not a full reactions map (conversation.service.ts
+        // updateMessageReaction).
+        final messageId = data['messageId']?.toString();
+        final reaction = data['reaction']?.toString();
+        final action = data['action']?.toString();
+        if (messageId == null || reaction == null || action == null) return;
 
-        final reactionsRaw = data['reactions'];
-        final reactions = reactionsRaw is Map
-            ? reactionsRaw.map(
-                (key, value) =>
-                    MapEntry(key.toString(), (value as num).toInt()),
-              )
-            : <String, int>{};
-
-        final updated = state.messages.map((m) {
-          if (m.id != messageId) return m;
-          return m.copyWith(reactions: reactions);
-        }).toList();
-
-        state = state.copyWith(messages: updated);
+        final delta = action == 'increment' ? 1 : -1;
+        state = state.copyWith(
+          messages: [
+            for (final m in state.messages)
+              if (m.id != messageId)
+                m
+              else
+                m.copyWith(
+                  reactions: {
+                    ...m.reactions,
+                    reaction: ((m.reactions[reaction] ?? 0) + delta)
+                        .clamp(0, 1 << 31),
+                  }..removeWhere((_, count) => count == 0),
+                ),
+          ],
+        );
       },
     );
   }

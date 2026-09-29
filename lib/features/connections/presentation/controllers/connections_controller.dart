@@ -58,25 +58,36 @@ class ConnectionsController extends Notifier<ConnectionsState> {
 
   @override
   ConnectionsState build() {
-    unawaited(Future.microtask(fetchConnections));
-    _initSocket();
+    // Rebuild (dropping state and the socket) whenever the signed-in user
+    // changes, so one account's data never survives into the next session.
+    final userId = ref.watch(
+      authControllerProvider.select((s) => s.user?.id),
+    );
     ref.onDispose(() {
       _socketService?.disconnect();
       _socketService = null;
     });
+    if (userId == null) return const ConnectionsState();
+
+    unawaited(Future.microtask(fetchConnections));
+    unawaited(_initSocket());
     return const ConnectionsState(isLoading: true);
   }
 
-  void _initSocket() {
-    final token = ref.read(storageServiceProvider).readUserModel()?.token;
-    if (token != null && token.isNotEmpty) {
-      _socketService = ConversationSocketService(token: token);
-      _socketService!.connect(
+  Future<void> _initSocket() async {
+    final storage = ref.read(storageServiceProvider);
+    final token = await storage.readToken();
+    if (token == null || token.isEmpty || !ref.mounted) return;
+
+    _socketService = ConversationSocketService(
+      readToken: storage.readToken,
+      revalidateSession: () =>
+          ref.read(authControllerProvider.notifier).refreshAuth(),
+    )..connect(
         onConversationUpdated: (_) {
           unawaited(fetchConnections());
         },
       );
-    }
   }
 
   Future<void> fetchConnections() async {

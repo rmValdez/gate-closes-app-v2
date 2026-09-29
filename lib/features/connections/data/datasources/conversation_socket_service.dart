@@ -1,4 +1,4 @@
-import 'package:gate_closes/core/config/app_config.dart';
+import 'package:gate_closes/core/services/authenticated_socket.dart';
 import 'package:gate_closes/core/utils/logger.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
@@ -6,17 +6,26 @@ import 'package:socket_io_client/socket_io_client.dart' as io;
 ///
 /// Event names are verified against `gate-closes-api/src/events/conversation.
 /// events.ts` and `conversation.controller.ts` — note `join_conversation`/
-/// `leave_conversation` use underscores, unlike Terminal Echo's
-/// `join-airport`/`leave-airport` (hyphenated). The two namespaces are not
-/// symmetric; do not copy one pattern onto the other without checking.
+/// `leave_conversation` (bare), unlike Terminal Echo's prefixed
+/// `terminal_echo:join_airport`. The two namespaces are not symmetric; do not
+/// copy one pattern onto the other without checking.
 class ConversationSocketService {
-  ConversationSocketService({required this.token});
+  ConversationSocketService({
+    required this.readToken,
+    this.revalidateSession,
+  });
 
-  final String? token;
-  io.Socket? _socket;
+  /// Read on every (re)connect handshake so a token rotated by the HTTP
+  /// refresh flow is picked up instead of a stale copy captured at creation.
+  final Future<String?> Function() readToken;
+
+  /// Called before reconnecting after the server rejects the handshake.
+  final Future<void> Function()? revalidateSession;
+
+  AuthenticatedSocket? _connection;
   String? _currentConversationId;
 
-  bool get isConnected => _socket?.connected ?? false;
+  bool get isConnected => _connection?.socket.connected ?? false;
 
   /// Connects to the `/conversations` namespace. If [conversationId] is
   /// provided, joins that conversation's room. Otherwise connects to the
@@ -30,28 +39,22 @@ class ConversationSocketService {
     disconnect();
     _currentConversationId = conversationId;
 
-    final baseUrl = AppConfig.instance.baseUrl;
-    final uri = Uri.parse(baseUrl);
-    final socketUrl = '${uri.scheme}://${uri.host}:${uri.port}/conversations';
-
-    _socket = io.io(
-      socketUrl,
-      io.OptionBuilder()
-          .setTransports(['websocket'])
-          .enableAutoConnect()
-          .setAuth({'token': token})
-          .setExtraHeaders(
-            token != null ? {'Authorization': 'Bearer $token'} : {},
-          )
-          .build(),
+    final connection = _connection = AuthenticatedSocket(
+      namespace: '/conversations',
+      // The /conversations middleware reads `auth.token`.
+      authKey: 'token',
+      readToken: readToken,
+      revalidateSession: revalidateSession,
     );
+    final socket = connection.socket;
 
-    _socket!.onConnect((_) {
+    // Runs on every (re)connect, so the room is rejoined after recovery.
+    socket.onConnect((_) {
       if (conversationId != null) {
         appLogger.i(
           'Socket connected to /conversations. Joining $conversationId',
         );
-        _socket!.emit('join_conversation', {'conversationId': conversationId});
+        socket.emit('join_conversation', {'conversationId': conversationId});
       } else {
         appLogger.i(
           'Socket connected to /conversations (listening for user updates)',
@@ -60,7 +63,7 @@ class ConversationSocketService {
     });
 
     if (onConversationUpdated != null) {
-      _socket!.on('conversation:updated', (data) {
+      socket.on('conversation:updated', (data) {
         if (data is Map) {
           onConversationUpdated(data.cast<String, dynamic>());
         }
@@ -68,7 +71,7 @@ class ConversationSocketService {
     }
 
     if (onMessageReceived != null) {
-      _socket!.on('message:received', (data) {
+      socket.on('message:received', (data) {
         if (data is Map) {
           onMessageReceived(data.cast<String, dynamic>());
         }
@@ -76,33 +79,28 @@ class ConversationSocketService {
     }
 
     if (onReactionUpdated != null) {
-      _socket!.on('reaction:updated', (data) {
+      socket.on('reaction:updated', (data) {
         if (data is Map) {
           onReactionUpdated(data.cast<String, dynamic>());
         }
       });
     }
 
-    _socket!.onConnectError((err) {
-      appLogger.w('Socket /conversations connect error: $err');
-    });
-
-    _socket!.onDisconnect((_) {
+    socket.onDisconnect((_) {
       appLogger.w('Socket disconnected from /conversations');
     });
   }
 
   void disconnect() {
-    if (_socket != null) {
-      if (_currentConversationId != null) {
-        _socket!.emit('leave_conversation', {
-          'conversationId': _currentConversationId,
-        });
-      }
-      _socket!.disconnect();
-      _socket!.dispose();
-      _socket = null;
-      _currentConversationId = null;
+    final connection = _connection;
+    if (connection == null) return;
+    if (_currentConversationId != null) {
+      connection.socket.emit('leave_conversation', {
+        'conversationId': _currentConversationId,
+      });
     }
+    connection.close();
+    _connection = null;
+    _currentConversationId = null;
   }
 }

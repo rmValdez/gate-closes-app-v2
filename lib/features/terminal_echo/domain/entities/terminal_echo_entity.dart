@@ -104,6 +104,29 @@ class TerminalEchoEntity extends Equatable {
     );
   }
 
+  /// Applies a realtime `{reactionKey, action}` broadcast: +1 for
+  /// `increment`, -1 otherwise, never below zero. Unknown keys are ignored.
+  TerminalEchoEntity withReactionDelta(String reactionKey, String action) {
+    final d = action == 'increment' ? 1 : -1;
+    int bump(int count) => (count + d) < 0 ? 0 : count + d;
+    switch (reactionKey) {
+      case 'like':
+        return copyWith(countReactLike: bump(countReactLike));
+      case 'love':
+        return copyWith(countReactLove: bump(countReactLove));
+      case 'haha':
+        return copyWith(countReactHaha: bump(countReactHaha));
+      case 'wow':
+        return copyWith(countReactWow: bump(countReactWow));
+      case 'sad':
+        return copyWith(countReactSad: bump(countReactSad));
+      case 'angry':
+        return copyWith(countReactAngry: bump(countReactAngry));
+      default:
+        return this;
+    }
+  }
+
   @override
   List<Object?> get props => [
         id,

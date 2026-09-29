@@ -1,14 +1,15 @@
+import 'dart:async';
+
 import 'package:equatable/equatable.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:gate_closes/core/config/app_config.dart';
 import 'package:gate_closes/core/services/storage_service.dart';
 import 'package:gate_closes/features/auth/presentation/controllers/auth_controller.dart';
+import 'package:gate_closes/features/terminal_echo/data/datasources/terminal_echo_socket_service.dart';
 import 'package:gate_closes/features/terminal_echo/data/models/terminal_echo_reply_model.dart';
 import 'package:gate_closes/features/terminal_echo/data/repositories/terminal_echo_reply_repository_impl.dart';
 import 'package:gate_closes/features/terminal_echo/domain/entities/terminal_echo_entity.dart';
 import 'package:gate_closes/features/terminal_echo/domain/entities/terminal_echo_reply_entity.dart';
 import 'package:gate_closes/features/terminal_echo/domain/repositories/terminal_echo_reply_repository.dart';
-import 'package:socket_io_client/socket_io_client.dart' as io;
 
 final terminalEchoReplyRepositoryProvider =
     Provider<TerminalEchoReplyRepository>((ref) {
@@ -51,12 +52,18 @@ class TerminalEchoThreadState extends Equatable {
 }
 
 class TerminalEchoThreadController extends Notifier<TerminalEchoThreadState> {
-  io.Socket? _socket;
+  TerminalEchoSocketService? _socketService;
   String? _echoId;
 
   @override
   TerminalEchoThreadState build() {
-    ref.onDispose(_disconnectSocket);
+    // Reset (and drop the socket) whenever the signed-in user changes.
+    ref
+      ..watch(authControllerProvider.select((s) => s.user?.id))
+      ..onDispose(() {
+        _disconnectSocket();
+        _echoId = null;
+      });
     return const TerminalEchoThreadState();
   }
 
@@ -65,6 +72,8 @@ class TerminalEchoThreadController extends Notifier<TerminalEchoThreadState> {
     state = state.copyWith(isLoading: true, echoId: echoId);
     final repo = ref.read(terminalEchoReplyRepositoryProvider);
     final result = await repo.getReplies(echoId);
+    // The user may have opened another thread while this one was loading.
+    if (!ref.mounted || _echoId != echoId) return;
 
     result.fold(
       (failure) => state = state.copyWith(
@@ -82,100 +91,43 @@ class TerminalEchoThreadController extends Notifier<TerminalEchoThreadState> {
   }
 
   void _initSocket(String echoId) {
-    final token = ref.read(storageServiceProvider).readUserModel()?.token;
     _disconnectSocket();
+    _socketService = TerminalEchoSocketService(
+      readToken: ref.read(storageServiceProvider).readToken,
+      revalidateSession: () =>
+          ref.read(authControllerProvider.notifier).refreshAuth(),
+    )..connectThread(
+        echoId: echoId,
+        onReplyCreated: (data) {
+          if (data['reply'] is! Map) return;
+          final newReply = TerminalEchoReplyModel.fromJson(
+            (data['reply'] as Map).cast<String, dynamic>(),
+          );
+          if (!state.replies.any((r) => r.id == newReply.id)) {
+            state = state.copyWith(replies: [newReply, ...state.replies]);
+          }
+        },
+        onReplyReactionUpdated: (data) {
+          final replyId = data['replyId']?.toString();
+          final reactionKey = data['reactionKey']?.toString();
+          final action = data['action']?.toString();
+          if (replyId == null || reactionKey == null || action == null) return;
 
-    final baseUrl = AppConfig.instance.baseUrl;
-    final uri = Uri.parse(baseUrl);
-    final socketUrl = '${uri.scheme}://${uri.host}:${uri.port}/terminal-echo';
-
-    _socket = io.io(
-      socketUrl,
-      io.OptionBuilder()
-          .setTransports(['websocket'])
-          .enableAutoConnect()
-          .setExtraHeaders(
-            token != null ? {'Authorization': 'Bearer $token'} : {},
-          )
-          .setAuth({
-            if (token != null) 'accessToken': token,
-          })
-          .build(),
-    );
-
-    _socket!.onConnect((_) {
-      _socket!.emit('terminal_echo:join_map', {'room': 'thread:$echoId'});
-    });
-
-    _socket!.on('terminal_echo_reply:created', (data) {
-      if (data is Map && data['reply'] is Map) {
-        final newReply = TerminalEchoReplyModel.fromJson(
-          (data['reply'] as Map).cast<String, dynamic>(),
-        );
-        if (!state.replies.any((r) => r.id == newReply.id)) {
-          state = state.copyWith(replies: [newReply, ...state.replies]);
-        }
-      }
-    });
-
-    _socket!.on('terminal_echo_reply:reaction_updated', (data) {
-      if (data is Map) {
-        final replyId = data['replyId']?.toString();
-        final reactionKey = data['reactionKey']?.toString();
-        final action = data['action']?.toString();
-        if (replyId == null || reactionKey == null || action == null) return;
-
-        final isInc = action == 'increment';
-        state = state.copyWith(
-          replies: state.replies.map((reply) {
-            if (reply.id != replyId) return reply;
-
-            var countLike = reply.countReactLike;
-            var countLove = reply.countReactLove;
-            var countHaha = reply.countReactHaha;
-            var countWow = reply.countReactWow;
-            var countSad = reply.countReactSad;
-            var countAngry = reply.countReactAngry;
-
-            final delta = isInc ? 1 : -1;
-            switch (reactionKey) {
-              case 'like':
-                countLike = (countLike + delta).clamp(0, 999999);
-              case 'love':
-                countLove = (countLove + delta).clamp(0, 999999);
-              case 'haha':
-                countHaha = (countHaha + delta).clamp(0, 999999);
-              case 'wow':
-                countWow = (countWow + delta).clamp(0, 999999);
-              case 'sad':
-                countSad = (countSad + delta).clamp(0, 999999);
-              case 'angry':
-                countAngry = (countAngry + delta).clamp(0, 999999);
-            }
-
-            return reply.copyWith(
-              countReactLike: countLike,
-              countReactLove: countLove,
-              countReactHaha: countHaha,
-              countReactWow: countWow,
-              countReactSad: countSad,
-              countReactAngry: countAngry,
-            );
-          }).toList(),
-        );
-      }
-    });
+          state = state.copyWith(
+            replies: [
+              for (final reply in state.replies)
+                reply.id == replyId
+                    ? reply.withReactionDelta(reactionKey, action)
+                    : reply,
+            ],
+          );
+        },
+      );
   }
 
   void _disconnectSocket() {
-    if (_socket != null) {
-      if (_echoId != null) {
-        _socket!.emit('terminal_echo:leave_map', {'room': 'thread:$_echoId'});
-      }
-      _socket!.disconnect();
-      _socket!.dispose();
-      _socket = null;
-    }
+    _socketService?.disconnect();
+    _socketService = null;
   }
 
   Future<bool> sendReply({

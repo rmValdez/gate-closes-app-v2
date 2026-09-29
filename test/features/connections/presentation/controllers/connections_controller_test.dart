@@ -1,14 +1,17 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:fpdart/fpdart.dart';
 import 'package:gate_closes/core/errors/failure.dart';
 import 'package:gate_closes/core/services/storage_service.dart';
 import 'package:gate_closes/features/connections/domain/entities/connection_entity.dart';
 import 'package:gate_closes/features/connections/domain/repositories/connections_repository.dart';
 import 'package:gate_closes/features/connections/presentation/controllers/connections_controller.dart';
-import 'package:flutter_test/flutter_test.dart';
-import 'package:fpdart/fpdart.dart';
 import 'package:mocktail/mocktail.dart';
 
+import '../../../../helpers/signed_in_auth.dart';
+
 class MockConnectionsRepository extends Mock implements ConnectionsRepository {}
+
 class MockStorageService extends Mock implements StorageService {}
 
 void main() {
@@ -20,6 +23,7 @@ void main() {
     mockRepository = MockConnectionsRepository();
     mockStorage = MockStorageService();
     when(() => mockStorage.readUserModel()).thenReturn(null);
+    when(() => mockStorage.readToken()).thenAnswer((_) async => null);
   });
 
   tearDown(() {
@@ -53,6 +57,7 @@ void main() {
       ).thenAnswer((_) async => const Right(tConnections));
       container = ProviderContainer(
         overrides: [
+          signedInAuthOverride,
           connectionsRepositoryProvider.overrideWithValue(mockRepository),
           storageServiceProvider.overrideWithValue(mockStorage),
         ],
@@ -72,6 +77,7 @@ void main() {
       ).thenAnswer((_) async => const Right(tConnections));
       container = ProviderContainer(
         overrides: [
+          signedInAuthOverride,
           connectionsRepositoryProvider.overrideWithValue(mockRepository),
           storageServiceProvider.overrideWithValue(mockStorage),
         ],
@@ -93,6 +99,7 @@ void main() {
       ).thenAnswer((_) async => const Left(tFailure));
       container = ProviderContainer(
         overrides: [
+          signedInAuthOverride,
           connectionsRepositoryProvider.overrideWithValue(mockRepository),
           storageServiceProvider.overrideWithValue(mockStorage),
         ],
