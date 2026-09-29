@@ -1,3 +1,4 @@
+import 'package:fpdart/fpdart.dart';
 import 'package:gate_closes/core/errors/exceptions.dart';
 import 'package:gate_closes/core/errors/failure.dart';
 import 'package:gate_closes/core/services/cookie_service.dart';
@@ -5,7 +6,6 @@ import 'package:gate_closes/core/services/storage_service.dart';
 import 'package:gate_closes/features/auth/data/datasources/auth_remote_datasource.dart';
 import 'package:gate_closes/features/auth/domain/entities/registration_step.dart';
 import 'package:gate_closes/features/auth/domain/entities/user_entity.dart';
-import 'package:fpdart/fpdart.dart';
 
 /// Repository contract (the abstraction the domain layer depends on).
 abstract class AuthRepository {
@@ -150,20 +150,15 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<Either<Failure, void>> logout() async {
-    // Revoke the session server-side and only clear the local session once the
-    // server confirms. A network/server failure is surfaced (session kept) so
-    // we never sign the user out locally while their session lives on the
-    // server. A 401 is the exception: the session is already invalid
-    // server-side (interceptor cleared tokens), so we treat it as logged out.
+    // Best-effort server-side revoke, then always clear the local session.
+    // Refusing to sign out while offline would trap the user in the app; once
+    // the refresh token is deleted from the device, the orphaned server
+    // session can't be used from here and simply expires.
     try {
       final refreshToken = await _storage.readRefreshToken();
       await _remote.logout(refreshToken);
-    } on UnauthorizedException catch (_) {
-      // Session already gone server-side — fall through and clear local state.
-    } on NetworkException catch (e) {
-      return Left(NetworkFailure(e.message));
-    } on AppException catch (e) {
-      return Left(ServerFailure(e.message));
+    } on AppException catch (_) {
+      // Offline, server error, or session already revoked — sign out anyway.
     }
 
     try {

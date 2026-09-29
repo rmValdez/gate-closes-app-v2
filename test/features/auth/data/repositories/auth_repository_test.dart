@@ -1,10 +1,10 @@
+import 'package:flutter_test/flutter_test.dart';
 import 'package:gate_closes/core/errors/exceptions.dart';
 import 'package:gate_closes/core/errors/failure.dart';
 import 'package:gate_closes/core/services/storage_service.dart';
 import 'package:gate_closes/features/auth/data/datasources/auth_remote_datasource.dart';
 import 'package:gate_closes/features/auth/data/models/user_model.dart';
 import 'package:gate_closes/features/auth/data/repositories/auth_repository.dart';
-import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 
 class MockAuthRemoteDataSource extends Mock implements AuthRemoteDataSource {}
@@ -128,6 +128,19 @@ void main() {
       final result = await repository.logout();
 
       // Assert
+      expect(result.isRight(), isTrue);
+      verify(() => mockStorage.clearSession()).called(1);
+    });
+
+    test('still clears the local session when offline', () async {
+      when(() => mockStorage.readRefreshToken()).thenAnswer((_) async => 'r');
+      when(
+        () => mockRemote.logout(any()),
+      ).thenThrow(const NetworkException());
+      when(() => mockStorage.clearSession()).thenAnswer((_) async {});
+
+      final result = await repository.logout();
+
       expect(result.isRight(), isTrue);
       verify(() => mockStorage.clearSession()).called(1);
     });

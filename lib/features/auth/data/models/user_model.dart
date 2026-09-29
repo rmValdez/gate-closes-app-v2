@@ -56,12 +56,13 @@ class UserModel extends UserEntity {
   /// backends issue only an access token.
   final String? refreshToken;
 
+  /// Profile fields only. Tokens are deliberately excluded: this map is
+  /// cached in plaintext SharedPreferences, while tokens live exclusively in
+  /// `StorageService`'s secure storage.
   Map<String, dynamic> toJson() => {
         'id': id,
         'email': email,
         'name': name,
-        'token': token,
-        'refreshToken': refreshToken,
         'gender': gender,
         'picture': picture,
         'signupCompleted': signupCompleted,

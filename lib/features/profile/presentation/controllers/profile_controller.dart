@@ -50,6 +50,13 @@ class ProfileState extends Equatable {
 class ProfileController extends Notifier<ProfileState> {
   @override
   ProfileState build() {
+    // Refetch from scratch whenever the signed-in user changes, so a previous
+    // account's profile never lingers after logout/login.
+    final userId = ref.watch(
+      authControllerProvider.select((s) => s.user?.id),
+    );
+    if (userId == null) return const ProfileState();
+
     unawaited(Future.microtask(fetchProfile));
     return const ProfileState(isLoading: true);
   }

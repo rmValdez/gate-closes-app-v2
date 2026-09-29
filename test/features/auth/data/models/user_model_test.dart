@@ -1,5 +1,5 @@
-import 'package:gate_closes/features/auth/data/models/user_model.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gate_closes/features/auth/data/models/user_model.dart';
 
 void main() {
   group('UserModel parsing against gate-closes-api contracts', () {
@@ -59,6 +59,20 @@ void main() {
       expect(reconstructed.email, model.email);
       expect(reconstructed.name, model.name);
       expect(reconstructed.gender, model.gender);
+    });
+
+    test('toJson never includes tokens (cached in plaintext prefs)', () {
+      const model = UserModel(
+        id: 'user123',
+        email: 'user@example.com',
+        name: 'user01.23',
+        token: 'token123',
+        refreshToken: 'refresh123',
+      );
+
+      final json = model.toJson();
+      expect(json.containsKey('token'), isFalse);
+      expect(json.containsKey('refreshToken'), isFalse);
     });
   });
 }

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:gate_closes/core/errors/failure.dart';
 import 'package:gate_closes/core/services/api_service.dart';
 import 'package:gate_closes/core/services/cookie_service.dart';
 import 'package:gate_closes/core/services/storage_service.dart';
@@ -88,8 +89,12 @@ class AuthController extends Notifier<AuthState> {
   Future<void> refreshAuth() async {
     final result = await ref.read(refreshAuthUseCaseProvider).execute();
     result.fold(
-      // If failed (e.g. token expired), sign out silently.
-      (failure) => state = const AuthState(),
+      (failure) {
+        // Only a rejected session signs the user out. Network/server errors
+        // (offline cold start, API blip) keep the cached user so the app
+        // still opens; the next authenticated call re-validates.
+        if (failure is UnauthorizedFailure) state = const AuthState();
+      },
       (user) => state = AuthState(user: user),
     );
   }

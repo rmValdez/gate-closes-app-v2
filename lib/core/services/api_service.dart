@@ -59,6 +59,10 @@ class ApiService {
           if (status != null && status >= 400 && status < 500) {
             return false;
           }
+          // A timed-out POST/PATCH may already have been applied server-side;
+          // replaying it would duplicate the echo/message/listen. Only retry
+          // idempotent methods, or requests the server can de-duplicate.
+          if (!isSafeToRetry(error.requestOptions)) return false;
           return error.type != DioExceptionType.cancel &&
               error.type != DioExceptionType.badResponse;
         },
@@ -81,11 +85,47 @@ class ApiService {
   /// Exposed so interceptors/tests can configure or replace the client.
   final Dio client;
 
+  static const String idempotencyKeyHeader = 'Idempotency-Key';
+
+  static const Set<String> _idempotentMethods = {
+    'GET',
+    'HEAD',
+    'OPTIONS',
+    'PUT',
+    'DELETE',
+  };
+
+  /// Whether replaying [options] after a transport failure can't create a
+  /// duplicate side effect.
+  @visibleForTesting
+  static bool isSafeToRetry(RequestOptions options) =>
+      _idempotentMethods.contains(options.method.toUpperCase()) ||
+      options.headers.containsKey(idempotencyKeyHeader);
+
   Future<dynamic> get(String path, {Map<String, dynamic>? query}) =>
       _send(() => client.get<dynamic>(path, queryParameters: query));
 
   Future<dynamic> post(String path, [Object? body]) =>
-      _send(() => client.post<dynamic>(path, data: body));
+      postWith(path, body: body);
+
+  /// POST with an optional [idempotencyKey], sent as the `Idempotency-Key`
+  /// header. The server de-duplicates replays by it, which also makes the
+  /// request eligible for automatic retry. Reuse the same key when the user
+  /// retries the same action.
+  Future<dynamic> postWith(
+    String path, {
+    Object? body,
+    String? idempotencyKey,
+  }) =>
+      _send(
+        () => client.post<dynamic>(
+          path,
+          data: body,
+          options: idempotencyKey == null
+              ? null
+              : Options(headers: {idempotencyKeyHeader: idempotencyKey}),
+        ),
+      );
 
   Future<dynamic> put(String path, [Object? body]) =>
       _send(() => client.put<dynamic>(path, data: body));
@@ -108,7 +148,10 @@ class ApiService {
   /// Normalizes Dio's transport-level errors into the app's typed exceptions.
   AppException _mapError(DioException e) {
     final status = e.response?.statusCode;
-    if (status == 401 || status == 403) {
+    // Only 401 means "not signed in". A 403 (e.g. "not a participant") is a
+    // permission error on one resource and falls through to ServerException
+    // — treating it as 401 would sign the user out.
+    if (status == 401) {
       return UnauthorizedException(_messageFrom(e) ?? 'Unauthorized access');
     }
 

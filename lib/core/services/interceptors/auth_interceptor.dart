@@ -27,6 +27,10 @@ class AuthInterceptor extends QueuedInterceptor {
               BaseOptions(
                 baseUrl: baseUrl,
                 contentType: Headers.jsonContentType,
+                // Without these a hung refresh stalls every queued request.
+                connectTimeout: const Duration(seconds: 10),
+                receiveTimeout: const Duration(seconds: 10),
+                sendTimeout: const Duration(seconds: 10),
               ),
             ) {
     configureWebCredentials(_refreshClient);
@@ -80,7 +84,15 @@ class AuthInterceptor extends QueuedInterceptor {
       return;
     }
 
-    final newToken = await _refreshToken();
+    // Concurrent 401s queue up behind the first one's refresh. If the stored
+    // token already differs from the one this request was sent with, that
+    // refresh happened — replay with it instead of rotating again.
+    final sentWith = (options.headers['Authorization'] as String?)
+        ?.replaceFirst('Bearer ', '');
+    final current = await _storage.readToken();
+    final alreadyRefreshed =
+        current != null && current.isNotEmpty && current != sentWith;
+    final newToken = alreadyRefreshed ? current : await _refreshToken();
     if (newToken == null) {
       await _storage.clearSession();
       await cookieService?.clearCookies();

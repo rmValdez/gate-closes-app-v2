@@ -16,7 +16,7 @@ class NetworkException extends AppException {
   const NetworkException([super.message = 'No internet connection']);
 }
 
-/// The request was rejected for authentication/authorization reasons (401/403).
+/// The request was rejected because the session is missing or invalid (401).
 class UnauthorizedException extends AppException {
   const UnauthorizedException([super.message = 'Unauthorized access']);
 }

@@ -1,11 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:fpdart/fpdart.dart';
 import 'package:gate_closes/core/errors/failure.dart';
 import 'package:gate_closes/core/services/storage_service.dart';
 import 'package:gate_closes/features/auth/data/repositories/auth_repository.dart';
 import 'package:gate_closes/features/auth/domain/entities/user_entity.dart';
 import 'package:gate_closes/features/auth/presentation/controllers/auth_controller.dart';
-import 'package:flutter_test/flutter_test.dart';
-import 'package:fpdart/fpdart.dart';
 import 'package:mocktail/mocktail.dart';
 
 class MockAuthRepository extends Mock implements AuthRepository {}
@@ -38,6 +38,50 @@ void main() {
     const tEmail = 'test@example.com';
     const tPassword = 'password123';
     const tUser = UserEntity(id: '1', email: tEmail, name: 'Test');
+
+    group('refreshAuth', () {
+      Future<AuthController> signedIn() async {
+        when(
+          () => mockRepository.login(tEmail, tPassword),
+        ).thenAnswer((_) async => const Right(tUser));
+        final controller = container.read(authControllerProvider.notifier);
+        await controller.login(tEmail, tPassword);
+        return controller;
+      }
+
+      test('keeps the user signed in on a network failure', () async {
+        final controller = await signedIn();
+        when(
+          () => mockRepository.refreshAuth(),
+        ).thenAnswer((_) async => const Left(NetworkFailure()));
+
+        await controller.refreshAuth();
+
+        expect(container.read(authControllerProvider).user, tUser);
+      });
+
+      test('keeps the user signed in on a server failure', () async {
+        final controller = await signedIn();
+        when(
+          () => mockRepository.refreshAuth(),
+        ).thenAnswer((_) async => const Left(ServerFailure('500')));
+
+        await controller.refreshAuth();
+
+        expect(container.read(authControllerProvider).user, tUser);
+      });
+
+      test('signs out when the session is rejected', () async {
+        final controller = await signedIn();
+        when(
+          () => mockRepository.refreshAuth(),
+        ).thenAnswer((_) async => const Left(UnauthorizedFailure()));
+
+        await controller.refreshAuth();
+
+        expect(container.read(authControllerProvider).isAuthenticated, false);
+      });
+    });
 
     test('initial state is AuthState()', () {
       final state = container.read(authControllerProvider);

@@ -2,11 +2,11 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:gate_closes/core/config/app_config.dart';
 import 'package:gate_closes/core/errors/exceptions.dart';
 import 'package:gate_closes/core/services/api_service.dart';
 import 'package:gate_closes/core/services/storage_service.dart';
-import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 
 class MockStorageService extends Mock implements StorageService {}
@@ -76,6 +76,18 @@ void main() {
       );
     });
 
+    test('throws ServerException (not Unauthorized) on 403', () async {
+      final api = _apiReturning(status: 403, body: {'message': 'forbidden'});
+      await expectLater(
+        api.get('/data'),
+        throwsA(
+          isA<ServerException>()
+              .having((e) => e.statusCode, 'statusCode', 403)
+              .having((e) => e.message, 'message', 'forbidden'),
+        ),
+      );
+    });
+
     test('throws ServerException on a 4xx (non-auth) response', () async {
       final api = _apiReturning(status: 422, body: {'message': 'boom'});
       await expectLater(
@@ -87,6 +99,31 @@ void main() {
             422,
           ),
         ),
+      );
+    });
+  });
+
+  group('ApiService.isSafeToRetry', () {
+    RequestOptions req(String method, [Map<String, dynamic>? headers]) =>
+        RequestOptions(path: '/x', method: method, headers: headers);
+
+    test('retries idempotent methods', () {
+      for (final m in ['GET', 'HEAD', 'OPTIONS', 'PUT', 'DELETE']) {
+        expect(ApiService.isSafeToRetry(req(m)), isTrue, reason: m);
+      }
+    });
+
+    test('does not retry POST/PATCH without an idempotency key', () {
+      expect(ApiService.isSafeToRetry(req('POST')), isFalse);
+      expect(ApiService.isSafeToRetry(req('PATCH')), isFalse);
+    });
+
+    test('retries a POST carrying an idempotency key', () {
+      expect(
+        ApiService.isSafeToRetry(
+          req('POST', {ApiService.idempotencyKeyHeader: 'k1'}),
+        ),
+        isTrue,
       );
     });
   });

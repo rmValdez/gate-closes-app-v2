@@ -1,11 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:fpdart/fpdart.dart';
 import 'package:gate_closes/core/errors/failure.dart';
 import 'package:gate_closes/features/profile/data/repositories/profile_repository.dart';
 import 'package:gate_closes/features/profile/domain/entities/profile_entity.dart';
 import 'package:gate_closes/features/profile/presentation/controllers/profile_controller.dart';
-import 'package:flutter_test/flutter_test.dart';
-import 'package:fpdart/fpdart.dart';
 import 'package:mocktail/mocktail.dart';
+
+import '../../../../helpers/signed_in_auth.dart';
 
 class MockProfileRepository extends Mock implements ProfileRepository {}
 
@@ -35,6 +37,7 @@ void main() {
       ).thenAnswer((_) async => const Right(tProfile));
       container = ProviderContainer(
         overrides: [
+          signedInAuthOverride,
           profileRepositoryProvider.overrideWithValue(mockRepository),
         ],
       )..read(profileControllerProvider);
@@ -57,6 +60,7 @@ void main() {
       ).thenAnswer((_) async => const Left(tFailure));
       container = ProviderContainer(
         overrides: [
+          signedInAuthOverride,
           profileRepositoryProvider.overrideWithValue(mockRepository),
         ],
       )..read(profileControllerProvider);

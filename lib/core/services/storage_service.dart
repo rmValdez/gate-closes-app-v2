@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -44,17 +45,29 @@ class StorageService {
     final raw = _prefs.getString(_userModelKey);
     if (raw == null) return null;
     try {
-      return UserModel.fromJson(
-        (jsonDecode(raw) as Map).cast<String, dynamic>(),
-      );
+      final json = (jsonDecode(raw) as Map).cast<String, dynamic>();
+      final user = UserModel.fromJson(json);
+      // Older builds cached tokens here in plaintext — rewrite the entry
+      // without them (toJson no longer emits tokens).
+      if (json.containsKey('token') || json.containsKey('refreshToken')) {
+        unawaited(saveUserModel(user));
+      }
+      return user;
     } on Object catch (_) {
       return null;
     }
   }
 
   // --- Onboarding flag ---
-  bool get onboardingSeen => _prefs.getBool(_onboardingKey) ?? false;
-  Future<void> setOnboardingSeen() => _prefs.setBool(_onboardingKey, true);
+  // Keyed per user so a second account on the same device still gets
+  // onboarding. The legacy device-wide flag (pre-per-user builds) still
+  // counts as seen, so existing users aren't shown it again after upgrade.
+  bool isOnboardingSeen(String userId) =>
+      _prefs.getBool('$_onboardingKey:$userId') ??
+      _prefs.getBool(_onboardingKey) ??
+      false;
+  Future<void> setOnboardingSeen(String userId) =>
+      _prefs.setBool('$_onboardingKey:$userId', true);
 
   /// Clears the whole authenticated session (tokens + cached user).
   Future<void> clearSession() async {
