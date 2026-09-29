@@ -65,35 +65,36 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
               'boarding pass to broadcast or match with other travelers.',
             ),
             actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: Text(
-                'Keep It',
-                style: TextStyle(color: context.colors.textSecondary),
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: Text(
+                  'Keep It',
+                  style: TextStyle(color: context.colors.textSecondary),
+                ),
               ),
-            ),
-            TextButton(
-              onPressed: () async {
-                Navigator.of(dialogContext).pop();
-                final ok = await ref
-                    .read(flightControllerProvider.notifier)
-                    .deleteFlightTicket();
-                if (mounted) {
-                  if (ok) {
-                    showTopToast(context, 'Boarding pass removed');
-                  } else {
-                    final err = ref.read(flightControllerProvider).error;
-                    showTopToast(context, err ?? 'Failed to delete ticket');
+              TextButton(
+                onPressed: () async {
+                  Navigator.of(dialogContext).pop();
+                  final ok = await ref
+                      .read(flightControllerProvider.notifier)
+                      .deleteFlightTicket();
+                  if (mounted) {
+                    if (ok) {
+                      showTopToast(context, 'Boarding pass removed');
+                    } else {
+                      final err = ref.read(flightControllerProvider).error;
+                      showTopToast(context, err ?? 'Failed to delete ticket');
+                    }
                   }
-                }
-              },
-              child: const Text('Delete', style: TextStyle(color: Colors.red)),
-            ),
-          ],
-        );
-      },
-    ),
-  );
+                },
+                child:
+                    const Text('Delete', style: TextStyle(color: Colors.red)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   void _showFlightCardMenu(FlightTicketEntity ticket) {
@@ -149,33 +150,34 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       showDialog<void>(
         context: context,
         builder: (dialogContext) {
-        return AlertDialog(
-          backgroundColor: context.colors.surface,
-          title: const Text('Log Out'),
-          content: const Text(
-            'Are you sure you want to disconnect from the terminal? '
-            'You will need to re-authenticate to enter.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: Text(
-                'Stay Connected',
-                style: TextStyle(color: context.colors.textSecondary),
+          return AlertDialog(
+            backgroundColor: context.colors.surface,
+            title: const Text('Log Out'),
+            content: const Text(
+              'Are you sure you want to disconnect from the terminal? '
+              'You will need to re-authenticate to enter.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: Text(
+                  'Stay Connected',
+                  style: TextStyle(color: context.colors.textSecondary),
+                ),
               ),
-            ),
-            TextButton(
-              onPressed: () async {
-                Navigator.of(dialogContext).pop();
-                await ref.read(authControllerProvider.notifier).logout();
-              },
-              child: const Text('Log Out', style: TextStyle(color: Colors.red)),
-            ),
-          ],
-        );
-      },
-    ),
-  );
+              TextButton(
+                onPressed: () async {
+                  Navigator.of(dialogContext).pop();
+                  await ref.read(authControllerProvider.notifier).logout();
+                },
+                child:
+                    const Text('Log Out', style: TextStyle(color: Colors.red)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   @override
@@ -345,11 +347,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                         Switch(
                           value: themeMode == ThemeMode.dark,
                           activeTrackColor: colors.accent,
-                          onChanged: (isDark) => ref
-                              .read(themeModeProvider.notifier)
-                              .setThemeMode(
-                                isDark ? ThemeMode.dark : ThemeMode.light,
-                              ),
+                          onChanged: (isDark) =>
+                              ref.read(themeModeProvider.notifier).setThemeMode(
+                                    isDark ? ThemeMode.dark : ThemeMode.light,
+                                  ),
                         ),
                       ],
                     ),
@@ -748,18 +749,25 @@ class _FlightTicketCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Return',
-                style: TextStyle(fontSize: 12, color: colors.textMuted),
-              ),
-              Text(
-                formatter.format(ticket.returnDateTime),
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: colors.textPrimary,
+              if (ticket.returnDateTime != null) ...[
+                Text(
+                  'Return',
+                  style: TextStyle(fontSize: 12, color: colors.textMuted),
                 ),
-              ),
+                Text(
+                  formatter.format(ticket.returnDateTime!),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: colors.textPrimary,
+                  ),
+                ),
+              ] else ...[
+                Text(
+                  'One-way',
+                  style: TextStyle(fontSize: 12, color: colors.textMuted),
+                ),
+              ],
             ],
           ),
         ],

@@ -1,3 +1,4 @@
+import 'package:fpdart/fpdart.dart';
 import 'package:gate_closes/core/constants/api_endpoints.dart';
 import 'package:gate_closes/core/errors/exceptions.dart';
 import 'package:gate_closes/core/errors/failure.dart';
@@ -5,7 +6,6 @@ import 'package:gate_closes/core/services/api_service.dart';
 import 'package:gate_closes/features/flight/data/models/flight_ticket_model.dart';
 import 'package:gate_closes/features/flight/domain/entities/flight_ticket_entity.dart';
 import 'package:gate_closes/features/flight/domain/repositories/flight_repository.dart';
-import 'package:fpdart/fpdart.dart';
 
 class FlightRepositoryImpl implements FlightRepository {
   const FlightRepositoryImpl(this._api);
@@ -37,8 +37,13 @@ class FlightRepositoryImpl implements FlightRepository {
     required String fromAirport,
     required String toAirport,
     required DateTime departureDateTime,
-    required DateTime returnDateTime,
+    DateTime? returnDateTime,
     DateTime? arrivalDateTime,
+    DateTime? boardingDateTime,
+    String? terminal,
+    String? gate,
+    String? seat,
+    String? idempotencyKey,
   }) async {
     try {
       final payload = <String, dynamic>{
@@ -46,13 +51,26 @@ class FlightRepositoryImpl implements FlightRepository {
         'fromAirport': fromAirport.trim(),
         'toAirport': toAirport.trim(),
         'departureDateTime': departureDateTime.toIso8601String(),
-        'returnDateTime': returnDateTime.toIso8601String(),
       };
+      if (returnDateTime != null) {
+        payload['returnDateTime'] = returnDateTime.toIso8601String();
+      }
       if (arrivalDateTime != null) {
         payload['arrivalDateTime'] = arrivalDateTime.toIso8601String();
       }
+      if (boardingDateTime != null) {
+        payload['boardingDateTime'] = boardingDateTime.toIso8601String();
+      }
+      if (terminal != null) payload['terminal'] = terminal;
+      if (gate != null) payload['gate'] = gate;
+      if (seat != null) payload['seat'] = seat;
+      if (idempotencyKey != null) payload['idempotencyKey'] = idempotencyKey;
 
-      final response = await _api.post(ApiEndpoints.flightTicket, payload);
+      final response = await _api.postWith(
+        ApiEndpoints.flightTicket,
+        body: payload,
+        idempotencyKey: idempotencyKey,
+      );
       final message =
           (response as Map)['message']?.toString() ?? 'Flight ticket created.';
       return Right(message);
@@ -71,6 +89,10 @@ class FlightRepositoryImpl implements FlightRepository {
     DateTime? departureDateTime,
     DateTime? returnDateTime,
     DateTime? arrivalDateTime,
+    DateTime? boardingDateTime,
+    String? terminal,
+    String? gate,
+    String? seat,
   }) async {
     try {
       final payload = <String, dynamic>{};
@@ -86,6 +108,12 @@ class FlightRepositoryImpl implements FlightRepository {
       if (arrivalDateTime != null) {
         payload['arrivalDateTime'] = arrivalDateTime.toIso8601String();
       }
+      if (boardingDateTime != null) {
+        payload['boardingDateTime'] = boardingDateTime.toIso8601String();
+      }
+      if (terminal != null) payload['terminal'] = terminal;
+      if (gate != null) payload['gate'] = gate;
+      if (seat != null) payload['seat'] = seat;
 
       final response = await _api.put(ApiEndpoints.flightTicket, payload);
       final message =

@@ -55,6 +55,9 @@ class FlightState extends Equatable {
 class FlightController extends Notifier<FlightState> {
   @override
   FlightState build() {
+    // Reset whenever the signed-in user changes, so a previous account's
+    // flight never lingers after logout/login.
+    ref.watch(authControllerProvider.select((s) => s.user?.id));
     return const FlightState();
   }
 
@@ -69,10 +72,9 @@ class FlightController extends Notifier<FlightState> {
         isLoading: false,
         error: failure.message,
       ),
-      (flight) => state = state.copyWith(
-        isLoading: false,
-        activeFlight: flight,
-      ),
+      // Assign directly: copyWith can't clear activeFlight, and a null here
+      // (flight ended/removed server-side) must replace the stale ticket.
+      (flight) => state = FlightState(activeFlight: flight),
     );
   }
 
@@ -83,8 +85,13 @@ class FlightController extends Notifier<FlightState> {
     required String fromAirport,
     required String toAirport,
     required DateTime departureDateTime,
-    required DateTime returnDateTime,
+    DateTime? returnDateTime,
     DateTime? arrivalDateTime,
+    DateTime? boardingDateTime,
+    String? terminal,
+    String? gate,
+    String? seat,
+    String? idempotencyKey,
   }) async {
     state = state.copyWith(isLoading: true);
     final repo = ref.read(flightRepositoryProvider);
@@ -97,6 +104,10 @@ class FlightController extends Notifier<FlightState> {
             departureDateTime: departureDateTime,
             returnDateTime: returnDateTime,
             arrivalDateTime: arrivalDateTime,
+            boardingDateTime: boardingDateTime,
+            terminal: terminal,
+            gate: gate,
+            seat: seat,
           )
         : await repo.createFlightTicket(
             flightNumber: flightNumber,
@@ -105,6 +116,11 @@ class FlightController extends Notifier<FlightState> {
             departureDateTime: departureDateTime,
             returnDateTime: returnDateTime,
             arrivalDateTime: arrivalDateTime,
+            boardingDateTime: boardingDateTime,
+            terminal: terminal,
+            gate: gate,
+            seat: seat,
+            idempotencyKey: idempotencyKey,
           );
 
     return result.fold(

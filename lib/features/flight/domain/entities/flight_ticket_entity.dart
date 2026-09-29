@@ -17,11 +17,14 @@ class FlightTicketEntity extends Equatable {
     required this.fromAirport,
     required this.toAirport,
     required this.departureDateTime,
-    required this.returnDateTime,
+    this.returnDateTime,
     this.arrivalDateTime,
+    this.boardingDateTime,
     this.fromAirportName,
     this.toAirportName,
+    this.terminal,
     this.gate,
+    this.seat,
   });
 
   final String id;
@@ -30,11 +33,14 @@ class FlightTicketEntity extends Equatable {
   final String fromAirport;
   final String toAirport;
   final DateTime departureDateTime;
-  final DateTime returnDateTime;
+  final DateTime? returnDateTime;
   final DateTime? arrivalDateTime;
+  final DateTime? boardingDateTime;
   final String? fromAirportName;
   final String? toAirportName;
+  final String? terminal;
   final String? gate;
+  final String? seat;
 
   /// Evaluates current lifecycle status based on a given point in time
   /// (defaulting to DateTime.now()).
@@ -81,8 +87,11 @@ class FlightTicketEntity extends Equatable {
         departureDateTime,
         returnDateTime,
         arrivalDateTime,
+        boardingDateTime,
         fromAirportName,
         toAirportName,
+        terminal,
         gate,
+        seat,
       ];
 }

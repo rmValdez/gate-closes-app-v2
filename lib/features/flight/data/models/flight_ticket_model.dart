@@ -8,11 +8,14 @@ class FlightTicketModel extends FlightTicketEntity {
     required super.fromAirport,
     required super.toAirport,
     required super.departureDateTime,
-    required super.returnDateTime,
+    super.returnDateTime,
     super.arrivalDateTime,
+    super.boardingDateTime,
     super.fromAirportName,
     super.toAirportName,
+    super.terminal,
     super.gate,
+    super.seat,
   });
 
   factory FlightTicketModel.fromJson(Map<String, dynamic> json) {
@@ -32,13 +35,18 @@ class FlightTicketModel extends FlightTicketEntity {
     final departureDateTime = DateTime.tryParse(departureStr) ?? DateTime.now();
 
     final returnStr = (payload['returnDateTime'] ?? '').toString();
-    final returnDateTime = DateTime.tryParse(returnStr) ??
-        departureDateTime.add(const Duration(days: 7));
+    final returnDateTime = DateTime.tryParse(returnStr);
 
     DateTime? arrivalDateTime;
     if (payload['arrivalDateTime'] != null) {
       arrivalDateTime =
           DateTime.tryParse(payload['arrivalDateTime'].toString());
+    }
+
+    DateTime? boardingDateTime;
+    if (payload['boardingDateTime'] != null) {
+      boardingDateTime =
+          DateTime.tryParse(payload['boardingDateTime'].toString());
     }
 
     return FlightTicketModel(
@@ -50,9 +58,12 @@ class FlightTicketModel extends FlightTicketEntity {
       departureDateTime: departureDateTime,
       returnDateTime: returnDateTime,
       arrivalDateTime: arrivalDateTime,
+      boardingDateTime: boardingDateTime,
       fromAirportName: payload['fromAirportName'] as String?,
       toAirportName: payload['toAirportName'] as String?,
+      terminal: payload['terminal'] as String?,
       gate: payload['gate'] as String?,
+      seat: payload['seat'] as String?,
     );
   }
 
@@ -63,10 +74,13 @@ class FlightTicketModel extends FlightTicketEntity {
         'fromAirport': fromAirport,
         'toAirport': toAirport,
         'departureDateTime': departureDateTime.toIso8601String(),
-        'returnDateTime': returnDateTime.toIso8601String(),
+        'returnDateTime': returnDateTime?.toIso8601String(),
         'arrivalDateTime': arrivalDateTime?.toIso8601String(),
+        'boardingDateTime': boardingDateTime?.toIso8601String(),
         'fromAirportName': fromAirportName,
         'toAirportName': toAirportName,
+        'terminal': terminal,
         'gate': gate,
+        'seat': seat,
       };
 }

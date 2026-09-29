@@ -1,6 +1,6 @@
+import 'package:fpdart/fpdart.dart';
 import 'package:gate_closes/core/errors/failure.dart';
 import 'package:gate_closes/features/flight/domain/entities/flight_ticket_entity.dart';
-import 'package:fpdart/fpdart.dart';
 
 abstract class FlightRepository {
   /// Loads current user's active flight ticket.
@@ -12,8 +12,13 @@ abstract class FlightRepository {
     required String fromAirport,
     required String toAirport,
     required DateTime departureDateTime,
-    required DateTime returnDateTime,
+    DateTime? returnDateTime,
     DateTime? arrivalDateTime,
+    DateTime? boardingDateTime,
+    String? terminal,
+    String? gate,
+    String? seat,
+    String? idempotencyKey,
   });
 
   /// Updates an existing flight ticket for the current user.
@@ -24,6 +29,10 @@ abstract class FlightRepository {
     DateTime? departureDateTime,
     DateTime? returnDateTime,
     DateTime? arrivalDateTime,
+    DateTime? boardingDateTime,
+    String? terminal,
+    String? gate,
+    String? seat,
   });
 
   /// Deletes or dismisses the user's flight ticket.
