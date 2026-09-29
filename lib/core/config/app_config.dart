@@ -41,7 +41,7 @@ class AppConfig {
       : environment = Environment.dev,
         appName = 'Gate Closes (Dev)',
         baseUrl = 'http://10.0.2.2:3001/api',
-        mapboxAccessToken = '',
+        mapboxAccessToken = _mapboxTokenDefine,
         enableLogging = true;
 
   /// Explicit production config used by `main_prod.dart` — logging off,
@@ -50,7 +50,7 @@ class AppConfig {
       : environment = Environment.prod,
         appName = 'Gate Closes',
         baseUrl = 'https://api.gatecloses.com/api',
-        mapboxAccessToken = '',
+        mapboxAccessToken = _mapboxTokenDefine,
         enableLogging = false;
 
   final Environment environment;
@@ -61,6 +61,13 @@ class AppConfig {
 
   bool get isDev => environment == Environment.dev;
   bool get isProd => environment == Environment.prod;
+
+  /// Mapbox public token for the define-based entry points (main_dev /
+  /// main_prod), which don't load a `.env` file:
+  /// `flutter run -t lib/main_prod.dart --dart-define=MAPBOX_ACCESS_TOKEN=pk...`
+  /// Without it the map can't render.
+  static const String _mapboxTokenDefine =
+      String.fromEnvironment('MAPBOX_ACCESS_TOKEN');
 
   /// Set once by `bootstrap()` before `runApp`. Reading it before then throws.
   static late AppConfig instance;
